@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -260,7 +261,7 @@ fun QuizScreen(
                                         }
                                     ) {
                                         Icon(
-                                            Icons.Default.VolumeUp,
+                                            Icons.AutoMirrored.Filled.VolumeUp,
                                             contentDescription = "TTS Answer",
                                             tint = MaterialTheme.colorScheme.primary
                                         )
@@ -338,7 +339,7 @@ fun QuizScreen(
                         onClick = { if (activeIndex > 0) currentIndex-- },
                         enabled = activeIndex > 0
                     ) {
-                        Icon(Icons.Default.ArrowBackIos, contentDescription = "Prev")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBackIos, contentDescription = "Prev")
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Previous")
                     }
@@ -349,8 +350,31 @@ fun QuizScreen(
                     ) {
                         Text("Next")
                         Spacer(modifier = Modifier.width(4.dp))
-                        Icon(Icons.Default.ArrowForwardIos, contentDescription = "Next")
+                        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = "Next")
                     }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(
+                onClick = { viewModel.generateMoreFlashcards() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !viewModel.isGeneratingFlashcards,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                if (viewModel.isGeneratingFlashcards) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onTertiary,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Generating Cards...", color = MaterialTheme.colorScheme.onTertiary)
+                } else {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = "Generate", tint = MaterialTheme.colorScheme.onTertiary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Generate New Flashcards", color = MaterialTheme.colorScheme.onTertiary)
                 }
             }
         }

@@ -18,9 +18,9 @@ object GeminiClient {
     private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent"
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
         .build()
 
     private val mediaTypeJson = "application/json; charset=utf-8".toMediaType()
@@ -31,7 +31,10 @@ object GeminiClient {
         val connections: List<String>,
         val questions: List<String>,
         val masterNotesSuggestedUpdate: String,
-        val flashcards: List<Pair<String, String>>
+        val flashcards: List<Pair<String, String>>,
+        val identifiedTitle: String? = null,
+        val identifiedAuthor: String? = null,
+        val identifiedGenreOrType: String? = null
     )
 
     suspend fun analyzeChunk(
@@ -69,6 +72,12 @@ object GeminiClient {
 
             Because the user selected 'focusArea' = $focusArea, put strong analytical emphasis on tracking $focusArea.
 
+            Additionally, you must analyze the text chunk to determine exactly what book or article it belongs to. Look for specific vocabulary, arguments, quotes, names, style, or content (such as Sapiens, Clean Code, Shakespeare, or specific academic papers/news). 
+            Determine with high confidence:
+            1. The specific, accurate book or article title.
+            2. The precise author of the text.
+            3. The general genre, category, or type of book/text (e.g., "Anthropology / History", "Software Architecture", "Political Theory", "Academic Journal", "Neuroscience", "Fiction / Novel").
+
             Your response MUST be a single, valid JSON object containing exactly these fields:
             1. "summary": A crisp 2-4 sentence overview of this specific text chunk.
             2. "keyPoints": A list of strings. Each string is a major bullet point containing crucial facts, vocabulary definitions, or conceptual breakdowns.
@@ -76,6 +85,9 @@ object GeminiClient {
             4. "questions": A list of 3 to 5 highly engaging questions to provoke deep thinking, review, or exam preparation.
             5. "masterNotesSuggestedUpdate": A short, elegant suggestion (bullet-pointed or descriptive paragraph) describing new insights, central arguments, or progress to append to the master notes.
             6. "flashcards": A list of objects, each containing "question" and "answer" fields representing helpful study questions generated from this chunk's content.
+            7. "identifiedTitle": A string of the high-confidence identified book title. If you are unsure or the input is too generic/short, return the user's title: "$bookTitle".
+            8. "identifiedAuthor": A string of the high-confidence identified author. If you are unsure or the input is too generic/short, return the user's author: "$bookAuthor".
+            9. "identifiedGenreOrType": A string identifying the genre or type (e.g., "Anthropology / History", "Software Architecture", "Neuroscience", "Academic Research"). Always provide your best estimation.
 
             JSON Schema required:
             {
@@ -86,7 +98,10 @@ object GeminiClient {
               "masterNotesSuggestedUpdate": "string",
               "flashcards": [
                 { "question": "string", "answer": "string" }
-              ]
+              ],
+              "identifiedTitle": "string",
+              "identifiedAuthor": "string",
+              "identifiedGenreOrType": "string"
             }
 
             Do not wrap the response in markdown blocks other than a plain JSON format, and do not include any text before or after the JSON.
@@ -120,34 +135,67 @@ object GeminiClient {
             .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
             .build()
 
-        try {
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string()
-                if (!response.isSuccessful || body == null) {
-                    val errMsg = "Request failed: Code ${response.code}. Msg: ${response.message}"
-                    Log.e(TAG, errMsg)
-                    return@withContext getFallbackResult(chunkText, errMsg)
+        var retryCount = 0
+        var lastErrorMsg = ""
+
+        while (retryCount < 3) {
+            try {
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string()
+                    if (!response.isSuccessful || body == null) {
+                        var errorDetail = response.message
+                        if (body != null) {
+                            try {
+                                val bodyJson = JSONObject(body)
+                                val errorObj = bodyJson.optJSONObject("error")
+                                if (errorObj != null) {
+                                    errorDetail = errorObj.optString("message", response.message)
+                                }
+                            } catch (e: Exception) {
+                                // ignore
+                            }
+                        }
+                        val errMsg = "Request failed: Code ${response.code}. Msg: $errorDetail"
+                        Log.e(TAG, errMsg)
+                        if (response.code == 499 || response.code == 429 || response.code >= 500) {
+                            lastErrorMsg = errMsg
+                            retryCount++
+                            kotlinx.coroutines.delay(2000L * retryCount)
+                            return@use // continue while loop
+                        }
+                        return@withContext getFallbackResult(chunkText, errMsg)
+                    }
+
+                    val jsonResponse = JSONObject(body)
+                    val candidates = jsonResponse.optJSONArray("candidates")
+                    val firstCandidate = candidates?.optJSONObject(0)
+                    val content = firstCandidate?.optJSONObject("content")
+                    val parts = content?.optJSONArray("parts")
+                    val firstPart = parts?.optJSONObject(0)
+                    val responseText = firstPart?.optString("text")
+
+                    if (responseText.isNullOrBlank()) {
+                        Log.e(TAG, "Empty response from Gemini")
+                        if (retryCount < 2) {
+                            retryCount++
+                            lastErrorMsg = "Empty response received."
+                            kotlinx.coroutines.delay(1000L)
+                            return@use
+                        }
+                        return@withContext getFallbackResult(chunkText, "Empty response received.")
+                    }
+
+                    return@withContext parseResult(responseText)
                 }
-
-                val jsonResponse = JSONObject(body)
-                val candidates = jsonResponse.optJSONArray("candidates")
-                val firstCandidate = candidates?.optJSONObject(0)
-                val content = firstCandidate?.optJSONObject("content")
-                val parts = content?.optJSONArray("parts")
-                val firstPart = parts?.optJSONObject(0)
-                val responseText = firstPart?.optString("text")
-
-                if (responseText.isNullOrBlank()) {
-                    Log.e(TAG, "Empty response from Gemini")
-                    return@withContext getFallbackResult(chunkText, "Empty response received.")
-                }
-
-                return@withContext parseResult(responseText)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error calling Gemini API", e)
+                lastErrorMsg = "Connection Error: ${e.localizedMessage}"
+                retryCount++
+                kotlinx.coroutines.delay(2000L * retryCount)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error calling Gemini API", e)
-            return@withContext getFallbackResult(chunkText, "Connection Error: ${e.localizedMessage}")
         }
+        
+        return@withContext getFallbackResult(chunkText, lastErrorMsg)
     }
 
     private fun parseResult(rawJson: String): AnalysisResult {
@@ -204,13 +252,20 @@ object GeminiClient {
                 }
             }
 
+            val identifiedTitle = json.optString("identifiedTitle", "").trim().ifBlank { null }
+            val identifiedAuthor = json.optString("identifiedAuthor", "").trim().ifBlank { null }
+            val identifiedGenreOrType = json.optString("identifiedGenreOrType", "").trim().ifBlank { null }
+
             return AnalysisResult(
                 summary = summary,
                 keyPoints = keyPoints,
                 connections = connections,
                 questions = questions,
                 masterNotesSuggestedUpdate = notesUpdate,
-                flashcards = flashcards
+                flashcards = flashcards,
+                identifiedTitle = identifiedTitle,
+                identifiedAuthor = identifiedAuthor,
+                identifiedGenreOrType = identifiedGenreOrType
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse JSON response: $rawJson", e)
@@ -243,7 +298,10 @@ object GeminiClient {
             masterNotesSuggestedUpdate = "Session paused. Key configurations needed.",
             flashcards = listOf(
                 "What is EchoReader's main source of analysis?" to "The Gemini API, which requires a valid API key setup."
-            )
+            ),
+            identifiedTitle = null,
+            identifiedAuthor = null,
+            identifiedGenreOrType = null
         )
     }
 }

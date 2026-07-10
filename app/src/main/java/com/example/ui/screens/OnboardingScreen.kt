@@ -11,9 +11,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.Hearing
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.QuestionAnswer
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope

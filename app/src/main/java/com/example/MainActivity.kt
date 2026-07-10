@@ -59,6 +59,10 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(innerPadding)
                     ) { screen ->
                         when (screen) {
+                            AppScreen.MODEL_DOWNLOAD -> {
+                                ModelDownloadScreen(viewModel = viewModel)
+                            }
+
                             AppScreen.ONBOARDING -> {
                                 OnboardingScreen(
                                     onGetStarted = { viewModel.navigateTo(AppScreen.HISTORY_LIST) }
@@ -103,6 +107,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Ensure all zombie and orphan C++ processes are strictly killed when app is actually closed (not on rotate)
+        if (isFinishing) {
+            android.os.Process.killProcess(android.os.Process.myPid())
         }
     }
 }

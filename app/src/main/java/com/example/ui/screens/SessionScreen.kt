@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +35,9 @@ import androidx.compose.ui.unit.sp
 import com.example.data.BookSession
 import com.example.viewmodel.AppScreen
 import com.example.viewmodel.EchoReaderViewModel
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -209,7 +213,7 @@ fun SessionScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = { viewModel.navigateTo(AppScreen.HISTORY_LIST) }) {
-                            Icon(Icons.Default.MenuBook, contentDescription = "Library")
+                            Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = "Library")
                         }
                     },
                     actions = {
@@ -435,7 +439,7 @@ fun SessionScreen(
                                             .heightIn(min = 80.dp),
                                         contentAlignment = Alignment.CenterStart
                                     ) {
-                                        if (viewModel.transcriptionText.isBlank()) {
+                                        if (viewModel.transcriptionText.isBlank() && viewModel.partialTranscriptionText.isBlank()) {
                                             Text(
                                                 "Captured speech transcribing in real-time will appear here...",
                                                 style = MaterialTheme.typography.bodyMedium,
@@ -443,11 +447,23 @@ fun SessionScreen(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                             )
                                         } else {
-                                            Text(
-                                                viewModel.transcriptionText,
-                                                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                                                fontFamily = FontFamily.Serif
-                                            )
+                                            Column {
+                                                if (viewModel.transcriptionText.isNotBlank()) {
+                                                    Text(
+                                                        viewModel.transcriptionText,
+                                                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                                                        fontFamily = FontFamily.Serif
+                                                    )
+                                                }
+                                                if (viewModel.partialTranscriptionText.isNotBlank()) {
+                                                    Text(
+                                                        viewModel.partialTranscriptionText,
+                                                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                                                        fontFamily = FontFamily.Serif,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -503,6 +519,19 @@ fun SessionScreen(
                                 }
                             }
                         }
+
+                        if (viewModel.isAnalyzing) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = { viewModel.emergencyStop() },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                modifier = Modifier.fillMaxWidth().testTag("emergency_stop_button")
+                            ) {
+                                Icon(Icons.Default.Stop, contentDescription = "Emergency Stop", tint = MaterialTheme.colorScheme.onError)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Emergency Stop (Hardware Protection)", color = MaterialTheme.colorScheme.onError)
+                            }
+                        }
                     }
                 }
 
@@ -535,7 +564,7 @@ fun SessionScreen(
                                     )
                                 }
 
-                                // TTS Audio play button
+                                // TTS Audio play button and PDF Export
                                 val itemToSpeak = when (viewModel.selectedAnalysisTab) {
                                     0 -> "Summary: ${result.summary}"
                                     1 -> "Key Insights: " + result.keyPoints.joinToString(". ")
@@ -544,21 +573,41 @@ fun SessionScreen(
                                     else -> ""
                                 }
 
-                                IconButton(
-                                    onClick = {
-                                        if (viewModel.isTtsPlaying) viewModel.stopSpeaking()
-                                        else viewModel.speak(itemToSpeak)
-                                    },
-                                    modifier = Modifier.background(
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                        CircleShape
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = if (viewModel.isTtsPlaying) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                                        contentDescription = "Read Aloud",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    val context = LocalContext.current
+                                    val bookTitle = viewModel.activeSession?.title ?: "Session"
+                                    IconButton(
+                                        onClick = {
+                                            com.example.utils.PdfExporter.exportAnalysisToPdf(context, result, bookTitle)
+                                        },
+                                        modifier = Modifier.background(
+                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f),
+                                            CircleShape
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PictureAsPdf,
+                                            contentDescription = "Export PDF",
+                                            tint = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            if (viewModel.isTtsPlaying) viewModel.stopSpeaking()
+                                            else viewModel.speak(itemToSpeak)
+                                        },
+                                        modifier = Modifier.background(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                            CircleShape
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = if (viewModel.isTtsPlaying) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                                            contentDescription = "Read Aloud",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
 
@@ -612,14 +661,8 @@ fun SessionScreen(
                                 when (viewModel.selectedAnalysisTab) {
                                     0 -> {
                                         // Summary View
-                                        Text(
-                                            text = result.summary,
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                lineHeight = 22.sp,
-                                                fontStyle = FontStyle.Italic
-                                            ),
-                                            fontFamily = FontFamily.Serif,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                        MarkdownText(
+                                            text = result.summary
                                         )
                                     }
 
@@ -629,10 +672,9 @@ fun SessionScreen(
                                             result.keyPoints.forEach { point ->
                                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     Text("•", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                                    Text(
+                                                    MarkdownText(
                                                         text = point,
-                                                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
-                                                        color = MaterialTheme.colorScheme.onSurface
+                                                        modifier = Modifier.weight(1f)
                                                     )
                                                 }
                                             }
@@ -645,10 +687,9 @@ fun SessionScreen(
                                             result.connections.forEach { conn ->
                                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                                     Text("🔗", fontSize = 14.sp)
-                                                    Text(
+                                                    MarkdownText(
                                                         text = conn,
-                                                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
-                                                        color = MaterialTheme.colorScheme.onSurface
+                                                        modifier = Modifier.weight(1f)
                                                     )
                                                 }
                                             }
@@ -685,10 +726,8 @@ fun SessionScreen(
                                                                 color = MaterialTheme.colorScheme.secondary
                                                             )
                                                         }
-                                                        Text(
+                                                        MarkdownText(
                                                             text = q,
-                                                            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 18.sp),
-                                                            color = MaterialTheme.colorScheme.onSurface,
                                                             modifier = Modifier.weight(1f)
                                                         )
                                                     }
@@ -715,7 +754,7 @@ fun SessionScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Icon(
-                                Icons.Default.MenuBook,
+                                Icons.AutoMirrored.Filled.MenuBook,
                                 contentDescription = "Start",
                                 modifier = Modifier.size(48.dp),
                                 tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.6f)
@@ -756,5 +795,72 @@ fun LabelledBadge(label: String, icon: ImageVector) {
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+fun MarkdownText(text: String, modifier: Modifier = Modifier) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val annotatedString = remember(text, primaryColor) {
+        buildAnnotatedString {
+            val lines = text.split("\n")
+            for (line in lines) {
+                when {
+                    line.startsWith("## ") || line.startsWith("### ") -> {
+                        val content = line.removePrefix("### ").removePrefix("## ")
+                        withStyle(style = SpanStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold, color = primaryColor)) {
+                            appendMarkdownLine(content)
+                            append("\n\n")
+                        }
+                    }
+                    line.startsWith("- ") || line.startsWith("* ") -> {
+                        val content = line.substring(2)
+                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold, color = primaryColor)) {
+                            append("•  ")
+                        }
+                        appendMarkdownLine(content)
+                        append("\n\n")
+                    }
+                    line.trim().isEmpty() -> {
+                        // avoid multiple empty lines
+                    }
+                    else -> {
+                        appendMarkdownLine(line)
+                        append("\n\n")
+                    }
+                }
+            }
+        }
+    }
+    
+    val trimmedString = remember(annotatedString) {
+        var trimIndex = annotatedString.length
+        while (trimIndex > 0 && annotatedString[trimIndex - 1].isWhitespace()) {
+            trimIndex--
+        }
+        annotatedString.subSequence(0, trimIndex)
+    }
+
+    Text(
+        text = trimmedString,
+        modifier = modifier,
+        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 24.sp),
+        fontFamily = FontFamily.Serif
+    )
+}
+
+fun AnnotatedString.Builder.appendMarkdownLine(text: String) {
+    val boldRegex = Regex("\\*\\*(.*?)\\*\\*")
+    var lastIndex = 0
+    val matches = boldRegex.findAll(text)
+    for (match in matches) {
+        append(text.substring(lastIndex, match.range.first))
+        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+            append(match.groupValues[1])
+        }
+        lastIndex = match.range.last + 1
+    }
+    if (lastIndex < text.length) {
+        append(text.substring(lastIndex))
     }
 }

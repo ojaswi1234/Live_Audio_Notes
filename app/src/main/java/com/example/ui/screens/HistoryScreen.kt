@@ -9,9 +9,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.NavigateNext
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -77,7 +81,7 @@ fun HistoryScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    Icons.Default.MenuBook,
+                    Icons.AutoMirrored.Filled.MenuBook,
                     contentDescription = "Empty",
                     modifier = Modifier.size(80.dp),
                     tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
@@ -245,7 +249,7 @@ fun SessionHistoryCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.NavigateNext,
+                        imageVector = Icons.AutoMirrored.Filled.NavigateNext,
                         contentDescription = "Open",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(28.dp)
