@@ -1,0 +1,6 @@
+{
+  "name": "EchoReader",
+  "description": "An interactive AI reading companion that listens as you read, builds structured notes, explains concepts, and makes flashcard quizzes in real time.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
