@@ -1,5 +1,0 @@
-fastapi
-uvicorn
-llmlingua
-torch
-pydantic

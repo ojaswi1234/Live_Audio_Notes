@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.text.style.TextOverflow
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -259,11 +260,11 @@ fun SessionScreen(
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            LabelledBadge(label = "Focus: ${session.focus}", icon = Icons.Default.FilterList)
-                            LabelledBadge(label = "Depth: ${session.depth}", icon = Icons.Default.CompassCalibration)
+                            LabelledBadge(label = "Focus: ${session.focus}", icon = Icons.Default.FilterList, modifier = Modifier.weight(1f))
+                            LabelledBadge(label = "Depth: ${session.depth}", icon = Icons.Default.CompassCalibration, modifier = Modifier.weight(1f))
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         Row(
@@ -318,8 +319,10 @@ fun SessionScreen(
                                 "Active Reading Segment",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Serif
+                                fontFamily = FontFamily.Serif,
+                                modifier = Modifier.weight(1f)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
 
                             // Mode toggle buttons
                             Row(
@@ -341,7 +344,9 @@ fun SessionScreen(
                                         "Voice",
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isVoiceMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (isVoiceMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                                 Box(
@@ -358,7 +363,9 @@ fun SessionScreen(
                                         "Type",
                                         style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (!isVoiceMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (!isVoiceMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -866,11 +873,11 @@ fun SessionScreen(
 }
 
 @Composable
-fun LabelledBadge(label: String, icon: ImageVector) {
+fun LabelledBadge(label: String, icon: ImageVector, modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
             .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -879,7 +886,10 @@ fun LabelledBadge(label: String, icon: ImageVector) {
         Text(
             label,
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
         )
     }
 }

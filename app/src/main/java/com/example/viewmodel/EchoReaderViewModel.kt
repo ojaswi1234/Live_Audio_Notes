@@ -233,20 +233,20 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
     // --- Analysis Execution ---
     fun processCurrentChunk() {
         val typed = typedText.trim()
-        if (typed.isNotEmpty()) {
-            viewModelScope.launch {
-                chunkProcessingQueue.send(typed)
-            }
-            typedText = ""
-            return
-        }
+        val fullTranscribed = transcriptionText.trim()
+        val partialTranscribed = partialTranscriptionText.trim()
+        
+        val combinedTranscribed = listOf(typed, fullTranscribed, partialTranscribed)
+            .filter { it.isNotEmpty() }
+            .joinToString("\n\n")
 
-        val partial = partialTranscriptionText.trim()
-        if (partial.isNotEmpty()) {
+        if (combinedTranscribed.isNotEmpty()) {
             viewModelScope.launch {
-                chunkProcessingQueue.send(partial)
+                chunkProcessingQueue.send(combinedTranscribed)
             }
+            transcriptionText = ""
             partialTranscriptionText = ""
+            typedText = ""
             return
         }
 

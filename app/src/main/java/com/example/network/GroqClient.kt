@@ -14,7 +14,6 @@ import java.util.concurrent.TimeUnit
 object GroqClient {
     private const val TAG = "GroqClient"
     private const val PROXY_URL = "https://live-audio-notes.onrender.com"
-    private const val COMPRESSION_URL = "https://live-audio-notes-compression-server.onrender.com/api/compress"
     private const val DIRECT_GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
     private val client = OkHttpClient.Builder()
@@ -59,22 +58,22 @@ object GroqClient {
         val systemInstruction = """
             You are EchoReader, a highly sophisticated AI reading companion and an enthusiastic, warm literature/technical mentor.
             The user is reading aloud or pasting text from:
-            Book/Article Title: "${'$'}bookTitle"
-            Author: "${'$'}bookAuthor"
-            Reading Purpose: "${'$'}readingPurpose"
-            Target Explanation Depth: "${'$'}depthLevel"
-            Special Study Focus Area: "${'$'}focusArea"
+            Book/Article Title: "$bookTitle"
+            Author: "$bookAuthor"
+            Reading Purpose: "$readingPurpose"
+            Target Explanation Depth: "$depthLevel"
+            Special Study Focus Area: "$focusArea"
 
             CURRENT MASTER NOTES (Session Progress so far):
-            ${'$'}previousMasterNotes
+            $previousMasterNotes
 
             You must analyze the incoming text chunk and produce a structured analysis.
-            Because the user requested 'depthLevel' = ${'$'}depthLevel, adapt your explanations accordingly:
+            Because the user requested 'depthLevel' = $depthLevel, adapt your explanations accordingly:
             - Beginner: Keep vocabulary accessible, write intuitive summaries and explain base concepts.
             - Intermediate: Elaborate with more technical details, list major sub-points, and add rich explanations.
             - Expert: Provide academic/scientific rigor, examine philosophical or stylistic nuances, and trace subtle structural logic.
 
-            Because the user selected 'focusArea' = ${'$'}focusArea, put strong analytical emphasis on tracking ${'$'}focusArea.
+            Because the user selected 'focusArea' = $focusArea, put strong analytical emphasis on tracking $focusArea.
 
             Additionally, you must analyze the text chunk to determine exactly what book or article it belongs to. Look for specific vocabulary, arguments, quotes, names, style, or content. 
             Determine with high confidence:
@@ -92,8 +91,8 @@ object GroqClient {
             - "questions": A list of 3 to 5 highly engaging questions to provoke deep thinking, review, or exam preparation.
             - "masterNotesSuggestedUpdate": A short, elegant suggestion (bullet-pointed or descriptive paragraph) describing new insights, central arguments, or progress to append to the master notes.
             - "flashcards": A list of objects, each containing "question" and "answer" fields representing helpful study questions generated from this chunk's content.
-            - "identifiedTitle": A string of the high-confidence identified book title. If you are unsure or the input is too generic/short, return the user's title: "${'$'}bookTitle".
-            - "identifiedAuthor": A string of the high-confidence identified author. If you are unsure or the input is too generic/short, return the user's author: "${'$'}bookAuthor".
+            - "identifiedTitle": A string of the high-confidence identified book title. If you are unsure or the input is too generic/short, return the user's title: "$bookTitle".
+            - "identifiedAuthor": A string of the high-confidence identified author. If you are unsure or the input is too generic/short, return the user's author: "$bookAuthor".
             - "identifiedGenreOrType": A string identifying the genre or type. Always provide your best estimation.
 
             Return ONLY valid JSON.
@@ -102,8 +101,8 @@ object GroqClient {
         // Situation wise compression: Only compress if text is relatively long (> 500 characters)
         var finalChunk = chunkText
         if (chunkText.length > 500) {
-            Log.d(TAG, "Chunk length > 500 characters, applying LLMLingua compression...")
-            finalChunk = compressPromptWithLLMLingua(chunkText, "Compress this text for analysis.")
+            Log.d(TAG, "Chunk length > 500 characters, applying local heuristic compression...")
+            finalChunk = LocalPromptCompressor.compress(chunkText)
         }
 
         // Situation wise proxy: Try proxy server first (it handles caching & saves requests)
@@ -118,11 +117,11 @@ object GroqClient {
             put("modelId", modelId)
         }
 
-        val proxyUrl = "${'$'}PROXY_URL/api/analyze"
+        val proxyUrl = "$PROXY_URL/api/analyze"
 
         val request = Request.Builder()
             .url(proxyUrl)
-            .addHeader("Authorization", "Bearer ${'$'}apiKey")
+            .addHeader("Authorization", "Bearer $apiKey")
             .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
             .build()
 
@@ -138,11 +137,11 @@ object GroqClient {
                         }
                     }
                 } else {
-                    Log.w(TAG, "Proxy failed with code ${'$'}{response.code}. Falling back to direct Groq API.")
+                    Log.w(TAG, "Proxy failed with code ${response.code}. Falling back to direct Groq API.")
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Proxy attempt failed: ${'$'}{e.localizedMessage}. Falling back to direct Groq API.")
+            Log.w(TAG, "Proxy attempt failed: ${e.localizedMessage}. Falling back to direct Groq API.")
         }
 
         // --- FALLBACK: Direct Groq API Call ---
@@ -156,7 +155,7 @@ object GroqClient {
                 })
                 put(JSONObject().apply {
                     put("role", "user")
-                    put("content", "Here is the read text chunk:\n\n${'$'}finalChunk")
+                    put("content", "Here is the read text chunk:\n\n$finalChunk")
                 })
             })
             put("response_format", JSONObject().apply { put("type", "json_object") })
@@ -170,7 +169,7 @@ object GroqClient {
             try {
                 val fallbackRequest = Request.Builder()
                     .url(DIRECT_GROQ_URL)
-                    .addHeader("Authorization", "Bearer ${'$'}apiKey")
+                    .addHeader("Authorization", "Bearer $apiKey")
                     .post(fallbackRequestBody.toString().toRequestBody(mediaTypeJson))
                     .build()
 
@@ -190,13 +189,13 @@ object GroqClient {
                 }
             } catch (e: Exception) {
                 lastErrorMsg = e.localizedMessage ?: "Unknown network error"
-                Log.e(TAG, "Direct Groq attempt ${'$'}{retryCount + 1} failed: ${'$'}lastErrorMsg")
+                Log.e(TAG, "Direct Groq attempt ${retryCount + 1} failed: $lastErrorMsg")
                 retryCount++
                 kotlinx.coroutines.delay(2000L * retryCount)
             }
         }
 
-        getFallbackResult(chunkText, "All network attempts failed. Last error: ${'$'}lastErrorMsg")
+        getFallbackResult(chunkText, "All network attempts failed. Last error: $lastErrorMsg")
     }
 
     private fun parseAnalysisResult(rawJson: String, originalChunkText: String): AnalysisResult {
@@ -308,8 +307,8 @@ object GroqClient {
                 identifiedGenreOrType = identifiedGenreOrType
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse JSON response: ${'$'}rawJson", e)
-            return getFallbackResult("Parsing Error", "Raw response could not be loaded into standard modules: ${'$'}{e.localizedMessage}")
+            Log.e(TAG, "Failed to parse JSON response: $rawJson", e)
+            return getFallbackResult("Parsing Error", "Raw response could not be loaded into standard modules: ${e.localizedMessage}")
         }
     }
 
@@ -328,9 +327,9 @@ object GroqClient {
 
     private fun getFallbackResult(chunkText: String, errorDetails: String): AnalysisResult {
         return AnalysisResult(
-            summary = "EchoReader could not complete the full analysis due to a network or configuration issue. (${'$'}errorDetails)",
+            summary = "EchoReader could not complete the full analysis due to a network or configuration issue. ($errorDetails)",
             keyPoints = listOf(
-                "Original Text Chunk: ${'$'}chunkText",
+                "Original Text Chunk: $chunkText",
                 "Ensure your API key is valid in the AI Studio Settings."
             ),
             connections = listOf("Check your internet connection and retry the analysis."),
@@ -362,11 +361,11 @@ object GroqClient {
             put("prompt", prompt)
         }
 
-        val proxyUrl = "${'$'}PROXY_URL/api/generate"
+        val proxyUrl = "$PROXY_URL/api/generate"
 
         val request = Request.Builder()
             .url(proxyUrl)
-            .addHeader("Authorization", "Bearer ${'$'}apiKey")
+            .addHeader("Authorization", "Bearer $apiKey")
             .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
             .build()
 
@@ -382,11 +381,11 @@ object GroqClient {
                         }
                     }
                 } else {
-                    Log.w(TAG, "Proxy generateRawResponse failed with code ${'$'}{response.code}. Falling back to direct API.")
+                    Log.w(TAG, "Proxy generateRawResponse failed with code ${response.code}. Falling back to direct API.")
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Proxy generateRawResponse failed: ${'$'}{e.localizedMessage}. Falling back to direct API.")
+            Log.w(TAG, "Proxy generateRawResponse failed: ${e.localizedMessage}. Falling back to direct API.")
         }
 
         // --- FALLBACK: Direct Groq API Call ---
@@ -410,7 +409,7 @@ object GroqClient {
             try {
                 val fallbackRequest = Request.Builder()
                     .url(DIRECT_GROQ_URL)
-                    .addHeader("Authorization", "Bearer ${'$'}apiKey")
+                    .addHeader("Authorization", "Bearer $apiKey")
                     .post(fallbackRequestBody.toString().toRequestBody(mediaTypeJson))
                     .build()
 
@@ -425,35 +424,13 @@ object GroqClient {
                 }
             } catch (e: Exception) {
                 lastErrorMsg = e.localizedMessage ?: "Unknown network error"
-                Log.e(TAG, "Direct Groq attempt ${'$'}{retryCount + 1} failed: ${'$'}lastErrorMsg")
+                Log.e(TAG, "Direct Groq attempt ${retryCount + 1} failed: $lastErrorMsg")
                 retryCount++
                 kotlinx.coroutines.delay(2000L * retryCount)
             }
         }
         
-        return@withContext "{ \"error\": \"All network attempts failed. Last error: ${'$'}lastErrorMsg\" }"
+        return@withContext "{ \"error\": \"All network attempts failed. Last error: $lastErrorMsg\" }"
     }
 
-    private suspend fun compressPromptWithLLMLingua(text: String, instruction: String): String = withContext(Dispatchers.IO) {
-        try {
-            val requestBodyJson = JSONObject().apply {
-                put("context", JSONArray().apply { put(text) })
-                put("instruction", instruction)
-                put("target_token", 300)
-                put("dynamic_context_compression_ratio", 0.3)
-            }
-            val request = Request.Builder()
-                .url(COMPRESSION_URL)
-                .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
-                .build()
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string() ?: return@withContext text
-                val jsonResponse = JSONObject(body)
-                return@withContext jsonResponse.optString("compressed_prompt", text)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error calling LLMLingua", e)
-            return@withContext text
-        }
-    }
 }
