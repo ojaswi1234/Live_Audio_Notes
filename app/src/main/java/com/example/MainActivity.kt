@@ -59,10 +59,15 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(innerPadding)
                     ) { screen ->
                         when (screen) {
-                            AppScreen.MODEL_DOWNLOAD -> {
-                                ModelDownloadScreen(viewModel = viewModel)
+                            AppScreen.API_SETUP_INSTRUCTIONS -> {
+                                ApiKeyInstructionsScreen(viewModel = viewModel)
                             }
-
+                            AppScreen.API_SETUP_INPUT -> {
+                                ApiKeyInputScreen(viewModel = viewModel)
+                            }
+                            AppScreen.API_KEY_MANAGER -> {
+                                ApiKeyManagerScreen(viewModel = viewModel)
+                            }
                             AppScreen.ONBOARDING -> {
                                 OnboardingScreen(
                                     onGetStarted = { viewModel.navigateTo(AppScreen.HISTORY_LIST) }

@@ -9,8 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
-import com.example.network.GeminiClient
-import com.example.network.LocalGemmaClient
+import com.example.network.GroqClient
 import com.example.speech.VoiceReaderManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +20,9 @@ import org.json.JSONArray
 import java.util.Locale
 
 enum class AppScreen {
-    MODEL_DOWNLOAD,
+    API_SETUP_INSTRUCTIONS,
+    API_SETUP_INPUT,
+    API_KEY_MANAGER,
     ONBOARDING,
     GOALS_SETUP,
     SESSION_DASHBOARD,
@@ -35,12 +36,50 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
     private val repository = SessionRepository(db.bookSessionDao())
     private val voiceManager = VoiceReaderManager(application)
     private var tts: TextToSpeech? = null
-    
-    val localGemmaClient = LocalGemmaClient(application)
+
+    private val prefs = application.getSharedPreferences("api_prefs", android.content.Context.MODE_PRIVATE)
+
+    var userApiKey by mutableStateOf(prefs.getString("groq_api_key", "") ?: "")
+        private set
+        
+    var userSelectedModel by mutableStateOf(prefs.getString("groq_model", "llama-3.1-8b-instant") ?: "llama-3.1-8b-instant")
+        private set
+
+    fun saveModel(model: String) {
+        userSelectedModel = model
+        prefs.edit().putString("groq_model", model).apply()
+    }
+
+    fun saveApiKey(key: String) {
+        userApiKey = key
+        prefs.edit().putString("groq_api_key", key).apply()
+    }
+
+    var customBaseUrl by mutableStateOf(prefs.getString("custom_base_url", "") ?: "")
+        private set
+    var llmLinguaUrl by mutableStateOf(prefs.getString("llmlingua_url", "") ?: "")
+        private set
+
+    fun saveAdvancedSettings(baseUrl: String, llmLingua: String) {
+        customBaseUrl = baseUrl
+        llmLinguaUrl = llmLingua
+        prefs.edit()
+            .putString("custom_base_url", baseUrl)
+            .putString("llmlingua_url", llmLingua)
+            .apply()
+    }
+
+    fun deleteApiKey() {
+        userApiKey = ""
+        prefs.edit().remove("groq_api_key").apply()
+    }
+
+    val currentApiKey: String
+        get() = userApiKey.takeIf { it.isNotEmpty() } ?: com.example.BuildConfig.GROQ_API_KEY
 
     // Navigation State
     private val _currentScreen = MutableStateFlow(
-        if (localGemmaClient.isModelDownloaded()) AppScreen.ONBOARDING else AppScreen.MODEL_DOWNLOAD
+        if (prefs.getString("groq_api_key", "").isNullOrEmpty() && com.example.BuildConfig.GROQ_API_KEY == "MY_GROQ_API_KEY") AppScreen.API_SETUP_INSTRUCTIONS else AppScreen.ONBOARDING
     )
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
 
@@ -64,7 +103,7 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
         private set
     var isAnalyzing by mutableStateOf(false)
         private set
-    var latestAnalysis by mutableStateOf<GeminiClient.AnalysisResult?>(null)
+    var latestAnalysis by mutableStateOf<GroqClient.AnalysisResult?>(null)
         private set
     var errorMessage by mutableStateOf<String?>(null)
     var isTtsPlaying by mutableStateOf(false)
@@ -75,50 +114,15 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
 
     private val chunkProcessingQueue = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
 
-    // Download States
-    var isDownloading by mutableStateOf(false)
-        private set
-    var downloadProgress by mutableStateOf(0f)
-        private set
-    var downloadStatus by mutableStateOf("")
-        private set
-
     // Active Tab in the Dashboard for the current chunk analysis
     var selectedAnalysisTab by mutableStateOf(0)
 
     init {
         tts = TextToSpeech(application, this)
-        viewModelScope.launch {
-            if (localGemmaClient.isModelDownloaded()) {
-                localGemmaClient.loadModel()
-            }
-        }
         
         viewModelScope.launch {
             for (text in chunkProcessingQueue) {
                 processChunkInternal(text, isAutoBatch = true)
-            }
-        }
-    }
-
-    fun downloadGemmaModel(urlStr: String) {
-        if (isDownloading) return
-        isDownloading = true
-        downloadProgress = 0f
-        downloadStatus = "Initializing download..."
-        
-        viewModelScope.launch {
-            val success = localGemmaClient.downloadModel(
-                urlStr = urlStr,
-                onProgress = { downloadProgress = it },
-                onStatus = { downloadStatus = it }
-            )
-            isDownloading = false
-            if (success) {
-                localGemmaClient.loadModel()
-                navigateTo(AppScreen.ONBOARDING)
-            } else {
-                errorMessage = "Failed to download/install offline model."
             }
         }
     }
@@ -271,17 +275,21 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
             stopListening()
         }
         stopSpeaking()
-        
-        // Reset emergency stop before new session
-        localGemmaClient.emergencyStopRequested = false
 
         try {
-            // Call Local Gemma Client
-            val result = localGemmaClient.analyzeChunkLocal(
+            // Call Groq Client
+            val result = GroqClient.analyzeChunk(
+                apiKey = currentApiKey,
+                modelId = userSelectedModel,
+                baseUrl = customBaseUrl,
+                llmLinguaUrl = llmLinguaUrl,
                 chunkText = textToProcess,
                 bookTitle = session.title,
                 bookAuthor = session.author,
-                focusArea = session.focus
+                readingPurpose = session.purpose,
+                depthLevel = session.depth,
+                focusArea = session.focus,
+                previousMasterNotes = session.masterNotes
             )
 
             latestAnalysis = result
@@ -386,16 +394,27 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
     // --- Text To Speech Integration ---
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            tts?.language = Locale.getDefault()
+            tts?.language = Locale.US
         } else {
             Log.e("EchoReaderViewModel", "TTS initialization failed")
         }
     }
 
-    fun speak(text: String) {
+    fun speak(text: String, isSeparator: Boolean = false) {
         if (text.isBlank()) return
         stopSpeaking()
         isTtsPlaying = true
+        
+        if (isSeparator) {
+            // Even lower pitch for section headers / separators
+            tts?.setPitch(0.6f)
+            tts?.setSpeechRate(0.85f)
+        } else {
+            // Less childish than default
+            tts?.setPitch(0.85f)
+            tts?.setSpeechRate(0.95f)
+        }
+        
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "EchoReaderTTS")
     }
 
@@ -430,7 +449,12 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
                     JSON:
                 """.trimIndent()
                 
-                val resultJsonStr = localGemmaClient.generateRawResponse(prompt)
+                val resultJsonStr = GroqClient.generateRawResponse(
+                    apiKey = currentApiKey, 
+                    modelId = userSelectedModel, 
+                    baseUrl = customBaseUrl,
+                    prompt = prompt
+                )
                 val cleanResponse = resultJsonStr.replace("```json", "").replace("```", "").trim()
                 val json = org.json.JSONObject(cleanResponse)
                 val flashcardsJson = json.optJSONArray("flashcards")
@@ -467,17 +491,14 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
         stopListening()
         stopSpeaking()
         
-        // Signal the local model to halt current generation
-        localGemmaClient.emergencyStopRequested = true
         isAnalyzing = false
         
-        errorMessage = "EMERGENCY STOP TRIGGERED: Hardware protection mode engaged. All offline AI operations halted."
+        errorMessage = "EMERGENCY STOP TRIGGERED: Hardware protection mode engaged."
     }
 
     override fun onCleared() {
         super.onCleared()
         tts?.shutdown()
         voiceManager.stopListening()
-        localGemmaClient.close()
     }
 }

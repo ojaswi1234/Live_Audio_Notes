@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.*
@@ -34,6 +35,8 @@ import com.example.viewmodel.AppScreen
 import com.example.viewmodel.EchoReaderViewModel
 import java.util.Calendar
 
+import androidx.compose.material.icons.filled.Lock
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
@@ -55,7 +58,12 @@ fun HistoryScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
-                )
+                ),
+                actions = {
+                    IconButton(onClick = { viewModel.navigateTo(AppScreen.API_KEY_MANAGER) }) {
+                        Icon(Icons.Default.Lock, contentDescription = "API Keys")
+                    }
+                }
             )
         },
         floatingActionButton = {

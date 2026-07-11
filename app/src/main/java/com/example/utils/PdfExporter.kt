@@ -10,13 +10,13 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.widget.Toast
-import com.example.network.GeminiClient
+import com.example.network.GroqClient
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 
 object PdfExporter {
-    fun exportAnalysisToPdf(context: Context, result: GeminiClient.AnalysisResult, bookTitle: String) {
+    fun exportAnalysisToPdf(context: Context, result: GroqClient.AnalysisResult, bookTitle: String) {
         val pdfDocument = PdfDocument()
         val paint = Paint()
         val titlePaint = TextPaint().apply {

@@ -569,7 +569,10 @@ fun SessionScreen(
                                     0 -> "Summary: ${result.summary}"
                                     1 -> "Key Insights: " + result.keyPoints.joinToString(". ")
                                     2 -> "Broad Connections: " + result.connections.joinToString(". ")
-                                    3 -> "Discussion Questions: " + result.questions.joinToString(". ")
+                                    3 -> "Reflections: " + result.reflections.joinToString(". ")
+                                    4 -> "Discussion Questions: " + result.questions.joinToString(". ")
+                                    5 -> "Web Research Suggestions: " + result.webResearch.joinToString(". ")
+                                    6 -> "Vocabulary: " + result.vocabulary.joinToString(". ") { "${it.first}: ${it.second}" }
                                     else -> ""
                                 }
 
@@ -595,7 +598,7 @@ fun SessionScreen(
                                     IconButton(
                                         onClick = {
                                             if (viewModel.isTtsPlaying) viewModel.stopSpeaking()
-                                            else viewModel.speak(itemToSpeak)
+                                            else viewModel.speak(itemToSpeak, isSeparator = true)
                                         },
                                         modifier = Modifier.background(
                                             MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
@@ -643,6 +646,24 @@ fun SessionScreen(
                                     onClick = { viewModel.selectedAnalysisTab = 3 }
                                 ) {
                                     Text("Reflection", modifier = Modifier.padding(vertical = 12.dp))
+                                }
+                                Tab(
+                                    selected = viewModel.selectedAnalysisTab == 4,
+                                    onClick = { viewModel.selectedAnalysisTab = 4 }
+                                ) {
+                                    Text("Questions", modifier = Modifier.padding(vertical = 12.dp))
+                                }
+                                Tab(
+                                    selected = viewModel.selectedAnalysisTab == 5,
+                                    onClick = { viewModel.selectedAnalysisTab = 5 }
+                                ) {
+                                    Text("Web Research", modifier = Modifier.padding(vertical = 12.dp))
+                                }
+                                Tab(
+                                    selected = viewModel.selectedAnalysisTab == 6,
+                                    onClick = { viewModel.selectedAnalysisTab = 6 }
+                                ) {
+                                    Text("Vocabulary", modifier = Modifier.padding(vertical = 12.dp))
                                 }
                             }
 
@@ -697,6 +718,21 @@ fun SessionScreen(
                                     }
 
                                     3 -> {
+                                        // Reflections view
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            result.reflections.forEach { ref ->
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Text("💭", fontSize = 14.sp)
+                                                    MarkdownText(
+                                                        text = ref,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    4 -> {
                                         // Discussion questions view
                                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                             result.questions.forEachIndexed { idx, q ->
@@ -732,6 +768,56 @@ fun SessionScreen(
                                                         )
                                                     }
                                                 }
+                                            }
+                                        }
+                                    }
+
+                                    5 -> {
+                                        // Web Research view
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            result.webResearch.forEach { topic ->
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Text("🌐", fontSize = 14.sp)
+                                                    MarkdownText(
+                                                        text = topic,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                            }
+                                            if (result.webResearch.isEmpty()) {
+                                                Text("No specific research topics suggested.", style = MaterialTheme.typography.bodyMedium)
+                                            }
+                                        }
+                                    }
+
+                                    6 -> {
+                                        // Vocabulary view
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            result.vocabulary.forEach { (word, meaning) ->
+                                                Card(
+                                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(12.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = word,
+                                                            style = MaterialTheme.typography.titleMedium,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        MarkdownText(
+                                                            text = meaning
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            if (result.vocabulary.isEmpty()) {
+                                                Text("No specific vocabulary extracted.", style = MaterialTheme.typography.bodyMedium)
                                             }
                                         }
                                     }

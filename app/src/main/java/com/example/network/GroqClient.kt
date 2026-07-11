@@ -12,10 +12,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-object GeminiClient {
-    private const val TAG = "GeminiClient"
-    private const val MODEL = "gemini-3.5-flash"
-    private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent"
+object GroqClient {
+    private const val TAG = "GroqClient"
+    private const val DEFAULT_BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(120, TimeUnit.SECONDS)
@@ -29,6 +28,9 @@ object GeminiClient {
         val summary: String,
         val keyPoints: List<String>,
         val connections: List<String>,
+        val reflections: List<String>,
+        val webResearch: List<String>,
+        val vocabulary: List<Pair<String, String>>,
         val questions: List<String>,
         val masterNotesSuggestedUpdate: String,
         val flashcards: List<Pair<String, String>>,
@@ -38,6 +40,10 @@ object GeminiClient {
     )
 
     suspend fun analyzeChunk(
+        apiKey: String,
+        modelId: String,
+        baseUrl: String = "",
+        llmLinguaUrl: String = "",
         chunkText: String,
         bookTitle: String,
         bookAuthor: String,
@@ -46,10 +52,9 @@ object GeminiClient {
         focusArea: String,
         previousMasterNotes: String
     ): AnalysisResult = withContext(Dispatchers.IO) {
-        val apiKey = BuildConfig.GEMINI_API_KEY
-        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-            Log.e(TAG, "Gemini API key is not configured!")
-            return@withContext getFallbackResult(chunkText, "API key is not configured in Secrets panel.")
+        if (apiKey.isEmpty() || apiKey == "MY_GROQ_API_KEY") {
+            Log.e(TAG, "Groq API key is not configured!")
+            return@withContext getFallbackResult(chunkText, "API key is not configured in Settings.")
         }
 
         val systemInstruction = """
@@ -69,72 +74,61 @@ object GeminiClient {
             - Beginner: Keep vocabulary accessible, write intuitive summaries and explain base concepts.
             - Intermediate: Elaborate with more technical details, list major sub-points, and add rich explanations.
             - Expert: Provide academic/scientific rigor, examine philosophical or stylistic nuances, and trace subtle structural logic.
-
             Because the user selected 'focusArea' = $focusArea, put strong analytical emphasis on tracking $focusArea.
 
-            Additionally, you must analyze the text chunk to determine exactly what book or article it belongs to. Look for specific vocabulary, arguments, quotes, names, style, or content (such as Sapiens, Clean Code, Shakespeare, or specific academic papers/news). 
+            Additionally, you must analyze the text chunk to determine exactly what book or article it belongs to. Look for specific vocabulary, arguments, quotes, names, style, or content. 
             Determine with high confidence:
             1. The specific, accurate book or article title.
             2. The precise author of the text.
-            3. The general genre, category, or type of book/text (e.g., "Anthropology / History", "Software Architecture", "Political Theory", "Academic Journal", "Neuroscience", "Fiction / Novel").
+            3. The general genre, category, or type of book/text.
 
             Your response MUST be a single, valid JSON object containing exactly these fields:
-            1. "summary": A crisp 2-4 sentence overview of this specific text chunk.
-            2. "keyPoints": A list of strings. Each string is a major bullet point containing crucial facts, vocabulary definitions, or conceptual breakdowns.
-            3. "connections": A list of strings. Each string links this chunk's ideas to: (a) previous parts of this text, (b) other books or famous concepts, or (c) practical real-world applications.
-            4. "questions": A list of 3 to 5 highly engaging questions to provoke deep thinking, review, or exam preparation.
-            5. "masterNotesSuggestedUpdate": A short, elegant suggestion (bullet-pointed or descriptive paragraph) describing new insights, central arguments, or progress to append to the master notes.
-            6. "flashcards": A list of objects, each containing "question" and "answer" fields representing helpful study questions generated from this chunk's content.
-            7. "identifiedTitle": A string of the high-confidence identified book title. If you are unsure or the input is too generic/short, return the user's title: "$bookTitle".
-            8. "identifiedAuthor": A string of the high-confidence identified author. If you are unsure or the input is too generic/short, return the user's author: "$bookAuthor".
-            9. "identifiedGenreOrType": A string identifying the genre or type (e.g., "Anthropology / History", "Software Architecture", "Neuroscience", "Academic Research"). Always provide your best estimation.
+            - "summary": A highly detailed and comprehensive paragraph summarizing this specific text chunk.
+            - "keyPoints": A list of strings. Each string is a major bullet point containing crucial facts or conceptual breakdowns.
+            - "connections": A list of strings. Each string links this chunk's ideas to: (a) previous parts of this text, (b) other books or famous concepts, or (c) practical real-world applications.
+            - "reflections": A list of strings containing deep philosophical, structural, or strategic reflections on the content.
+            - "webResearch": A list of strings suggesting specific topics, historical events, technical terms, or concepts from the text that the user should research on the web for deeper context.
+            - "vocabulary": A list of objects, each containing "word" and "meaning" fields. Extract technical jargon, expert vocabulary, or enhanced terminology found in the text and define them clearly. (Think of TF-IDF, extracting rare or important terms).
+            - "questions": A list of 3 to 5 highly engaging questions to provoke deep thinking, review, or exam preparation.
+            - "masterNotesSuggestedUpdate": A short, elegant suggestion (bullet-pointed or descriptive paragraph) describing new insights, central arguments, or progress to append to the master notes.
+            - "flashcards": A list of objects, each containing "question" and "answer" fields representing helpful study questions generated from this chunk's content.
+            - "identifiedTitle": A string of the high-confidence identified book title. If you are unsure or the input is too generic/short, return the user's title: "$bookTitle".
+            - "identifiedAuthor": A string of the high-confidence identified author. If you are unsure or the input is too generic/short, return the user's author: "$bookAuthor".
+            - "identifiedGenreOrType": A string identifying the genre or type. Always provide your best estimation.
 
-            JSON Schema required:
-            {
-              "summary": "string",
-              "keyPoints": ["string"],
-              "connections": ["string"],
-              "questions": ["string"],
-              "masterNotesSuggestedUpdate": "string",
-              "flashcards": [
-                { "question": "string", "answer": "string" }
-              ],
-              "identifiedTitle": "string",
-              "identifiedAuthor": "string",
-              "identifiedGenreOrType": "string"
-            }
-
-            Do not wrap the response in markdown blocks other than a plain JSON format, and do not include any text before or after the JSON.
+            Return ONLY valid JSON.
         """.trimIndent()
-
-        val requestBodyJson = JSONObject().apply {
-            put("contents", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("parts", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("text", "Here is the read text chunk:\n\n$chunkText")
-                        })
-                    })
-                })
-            })
-            put("systemInstruction", JSONObject().apply {
-                put("parts", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("text", systemInstruction)
-                    })
-                })
-            })
-            put("generationConfig", JSONObject().apply {
-                put("responseMimeType", "application/json")
-                put("temperature", 0.4)
-            })
+        
+        var finalChunk = chunkText
+        if (llmLinguaUrl.isNotEmpty()) {
+            finalChunk = compressPromptWithLLMLingua(llmLinguaUrl, chunkText, systemInstruction)
         }
 
-        val request = Request.Builder()
-            .url("$BASE_URL?key=$apiKey")
+        val requestBodyJson = JSONObject().apply {
+            put("model", modelId)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", systemInstruction)
+                })
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", "Here is the read text chunk:\n\n$finalChunk")
+                })
+            })
+            put("response_format", JSONObject().apply { put("type", "json_object") })
+            put("temperature", 0.4)
+        }
+
+        val actualUrl = baseUrl.ifEmpty { DEFAULT_BASE_URL }
+        val requestBuilder = Request.Builder()
+            .url(actualUrl)
+            .addHeader("Authorization", "Bearer $apiKey")
+            
+        val request = requestBuilder
             .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
             .build()
-
+        
         var retryCount = 0
         var lastErrorMsg = ""
 
@@ -157,7 +151,7 @@ object GeminiClient {
                         }
                         val errMsg = "Request failed: Code ${response.code}. Msg: $errorDetail"
                         Log.e(TAG, errMsg)
-                        if (response.code == 499 || response.code == 429 || response.code >= 500) {
+                        if (response.code == 429 || response.code >= 500) {
                             lastErrorMsg = errMsg
                             retryCount++
                             kotlinx.coroutines.delay(2000L * retryCount)
@@ -167,15 +161,13 @@ object GeminiClient {
                     }
 
                     val jsonResponse = JSONObject(body)
-                    val candidates = jsonResponse.optJSONArray("candidates")
-                    val firstCandidate = candidates?.optJSONObject(0)
-                    val content = firstCandidate?.optJSONObject("content")
-                    val parts = content?.optJSONArray("parts")
-                    val firstPart = parts?.optJSONObject(0)
-                    val responseText = firstPart?.optString("text")
+                    val choices = jsonResponse.optJSONArray("choices")
+                    val firstChoice = choices?.optJSONObject(0)
+                    val message = firstChoice?.optJSONObject("message")
+                    val responseText = message?.optString("content")
 
                     if (responseText.isNullOrBlank()) {
-                        Log.e(TAG, "Empty response from Gemini")
+                        Log.e(TAG, "Empty response from Groq")
                         if (retryCount < 2) {
                             retryCount++
                             lastErrorMsg = "Empty response received."
@@ -188,7 +180,7 @@ object GeminiClient {
                     return@withContext parseResult(responseText)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error calling Gemini API", e)
+                Log.e(TAG, "Error calling Groq API", e)
                 lastErrorMsg = "Connection Error: ${e.localizedMessage}"
                 retryCount++
                 kotlinx.coroutines.delay(2000L * retryCount)
@@ -222,6 +214,38 @@ object GeminiClient {
                 }
             }
             if (connections.isEmpty()) connections.add("No broader connections identified yet.")
+
+            val reflections = mutableListOf<String>()
+            val reflectionsArray = json.optJSONArray("reflections")
+            if (reflectionsArray != null) {
+                for (i in 0 until reflectionsArray.length()) {
+                    reflections.add(reflectionsArray.getString(i))
+                }
+            }
+            if (reflections.isEmpty()) reflections.add("No reflections generated.")
+
+            val webResearch = mutableListOf<String>()
+            val webResearchArray = json.optJSONArray("webResearch")
+            if (webResearchArray != null) {
+                for (i in 0 until webResearchArray.length()) {
+                    webResearch.add(webResearchArray.getString(i))
+                }
+            }
+
+            val vocabulary = mutableListOf<Pair<String, String>>()
+            val vocabularyArray = json.optJSONArray("vocabulary")
+            if (vocabularyArray != null) {
+                for (i in 0 until vocabularyArray.length()) {
+                    val vocabObj = vocabularyArray.optJSONObject(i)
+                    if (vocabObj != null) {
+                        val word = vocabObj.optString("word", "").trim()
+                        val meaning = vocabObj.optString("meaning", "").trim()
+                        if (word.isNotEmpty() && meaning.isNotEmpty()) {
+                            vocabulary.add(word to meaning)
+                        }
+                    }
+                }
+            }
 
             val questions = mutableListOf<String>()
             val questionsArray = json.optJSONArray("questions")
@@ -260,6 +284,9 @@ object GeminiClient {
                 summary = summary,
                 keyPoints = keyPoints,
                 connections = connections,
+                reflections = reflections,
+                webResearch = webResearch,
+                vocabulary = vocabulary,
                 questions = questions,
                 masterNotesSuggestedUpdate = notesUpdate,
                 flashcards = flashcards,
@@ -291,17 +318,89 @@ object GeminiClient {
             summary = "EchoReader could not complete the full analysis due to a network or configuration issue. ($errorDetails)",
             keyPoints = listOf(
                 "Original Text Chunk: $chunkText",
-                "Ensure your Gemini API key is valid in the AI Studio Secrets panel."
+                "Ensure your Groq API key is valid in the AI Studio Secrets panel."
             ),
             connections = listOf("Check your internet connection and retry the analysis."),
-            questions = listOf("How can we set up our Gemini API configuration correctly to resume learning?"),
+            reflections = emptyList(),
+            webResearch = emptyList(),
+            vocabulary = emptyList(),
+            questions = listOf("How can we set up our Groq API configuration correctly to resume learning?"),
             masterNotesSuggestedUpdate = "Session paused. Key configurations needed.",
             flashcards = listOf(
-                "What is EchoReader's main source of analysis?" to "The Gemini API, which requires a valid API key setup."
+                "What is EchoReader's main source of analysis?" to "The Groq API, which requires a valid API key setup."
             ),
             identifiedTitle = null,
             identifiedAuthor = null,
             identifiedGenreOrType = null
         )
+    }
+
+    suspend fun generateRawResponse(
+        apiKey: String, 
+        modelId: String, 
+        baseUrl: String = "",
+        prompt: String
+    ): String = withContext(Dispatchers.IO) {
+        if (apiKey.isEmpty() || apiKey == "MY_GROQ_API_KEY") {
+            return@withContext "{ \"error\": \"API key not configured\" }"
+        }
+
+        val requestBodyJson = JSONObject().apply {
+            put("model", modelId)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", prompt)
+                })
+            })
+            put("response_format", JSONObject().apply { put("type", "json_object") })
+            put("temperature", 0.7)
+        }
+
+        val actualUrl = baseUrl.ifEmpty { DEFAULT_BASE_URL }
+        val requestBuilder = Request.Builder()
+            .url(actualUrl)
+            .addHeader("Authorization", "Bearer $apiKey")
+            
+        val request = requestBuilder
+            .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string() ?: return@withContext ""
+                val jsonResponse = JSONObject(body)
+                val choices = jsonResponse.optJSONArray("choices")
+                val firstChoice = choices?.optJSONObject(0)
+                val message = firstChoice?.optJSONObject("message")
+                return@withContext message?.optString("content") ?: ""
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calling Groq API", e)
+            return@withContext "{ \"error\": \"${e.localizedMessage}\" }"
+        }
+    }
+
+    private suspend fun compressPromptWithLLMLingua(url: String, text: String, instruction: String): String = withContext(Dispatchers.IO) {
+        try {
+            val requestBodyJson = JSONObject().apply {
+                put("context", JSONArray().apply { put(text) })
+                put("instruction", instruction)
+                put("target_token", 300)
+                put("dynamic_context_compression_ratio", 0.3)
+            }
+            val request = Request.Builder()
+                .url(url)
+                .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
+                .build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string() ?: return@withContext text
+                val jsonResponse = JSONObject(body)
+                return@withContext jsonResponse.optString("compressed_prompt", text)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calling LLMLingua", e)
+            return@withContext text
+        }
     }
 }
