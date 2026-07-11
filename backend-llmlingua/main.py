@@ -2,25 +2,28 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from llmlingua import PromptCompressor
 import os
+import torch
+
+# Limit PyTorch threads to save memory overhead on small containers
+torch.set_num_threads(1)
 
 app = FastAPI(title="LLMLingua Compression API")
 
 # Initialize compressor globally
-# Note: Render free tier (512MB RAM) may struggle to load this model.
-# Consider using a smaller model or deploying on a paid tier with >= 2GB RAM.
 compressor = None
 
 @app.on_event("startup")
 def load_model():
     global compressor
-    # We use LLMLingua-2 small model by default to save memory
-    model_name = os.getenv("MODEL_NAME", "microsoft/llmlingua-2-xlm-roberta-large-meetingbank")
+    # We use distilgpt2 which is much smaller (~300MB) instead of the large roberta model
+    # to help it fit within Render's 512MB free tier memory limit.
+    model_name = os.getenv("MODEL_NAME", "distilgpt2")
     try:
         print(f"Loading model {model_name}...")
         compressor = PromptCompressor(
             model_name=model_name, 
-            use_llmlingua2=True,
-            device_map="cpu" # Force CPU for cheap cloud deployments
+            use_llmlingua2=False, # False because distilgpt2 uses the original LLMLingua approach
+            device_map="cpu" 
         )
         print("Model loaded successfully!")
     except Exception as e:

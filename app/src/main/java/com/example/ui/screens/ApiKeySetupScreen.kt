@@ -190,8 +190,6 @@ fun ApiKeyManagerScreen(viewModel: EchoReaderViewModel) {
     val context = LocalContext.current
     var inputKey by remember { mutableStateOf("") }
     
-    var baseUrlInput by remember { mutableStateOf(viewModel.customBaseUrl) }
-    var llmLinguaInput by remember { mutableStateOf(viewModel.llmLinguaUrl) }
     
     Scaffold(
         topBar = {
@@ -297,41 +295,6 @@ fun ApiKeyManagerScreen(viewModel: EchoReaderViewModel) {
                 }
             }
             
-            Spacer(modifier = Modifier.height(32.dp))
-            Divider()
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Text("Advanced Settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            OutlinedTextField(
-                value = baseUrlInput,
-                onValueChange = { baseUrlInput = it },
-                label = { Text("LiteLLM Proxy Base URL") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = llmLinguaInput,
-                onValueChange = { llmLinguaInput = it },
-                label = { Text("LLMLingua Compression URL") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(
-                onClick = {
-                    viewModel.saveAdvancedSettings(
-                        baseUrlInput.trim(),
-                        llmLinguaInput.trim()
-                    )
-                },
-                modifier = Modifier.align(Alignment.End)
-            ) {
-                Text("Save Advanced")
-            }
-
             Spacer(modifier = Modifier.height(32.dp))
             
             Text("Groq Cloud Dashboard", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)

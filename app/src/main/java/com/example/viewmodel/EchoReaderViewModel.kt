@@ -55,19 +55,6 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
         prefs.edit().putString("groq_api_key", key).apply()
     }
 
-    var customBaseUrl by mutableStateOf(prefs.getString("custom_base_url", "") ?: "")
-        private set
-    var llmLinguaUrl by mutableStateOf(prefs.getString("llmlingua_url", "") ?: "")
-        private set
-
-    fun saveAdvancedSettings(baseUrl: String, llmLingua: String) {
-        customBaseUrl = baseUrl
-        llmLinguaUrl = llmLingua
-        prefs.edit()
-            .putString("custom_base_url", baseUrl)
-            .putString("llmlingua_url", llmLingua)
-            .apply()
-    }
 
     fun deleteApiKey() {
         userApiKey = ""
@@ -281,8 +268,8 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
             val result = GroqClient.analyzeChunk(
                 apiKey = currentApiKey,
                 modelId = userSelectedModel,
-                baseUrl = customBaseUrl,
-                llmLinguaUrl = llmLinguaUrl,
+                
+                
                 chunkText = textToProcess,
                 bookTitle = session.title,
                 bookAuthor = session.author,
@@ -452,7 +439,7 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
                 val resultJsonStr = GroqClient.generateRawResponse(
                     apiKey = currentApiKey, 
                     modelId = userSelectedModel, 
-                    baseUrl = customBaseUrl,
+                    
                     prompt = prompt
                 )
                 val cleanResponse = resultJsonStr.replace("```json", "").replace("```", "").trim()
