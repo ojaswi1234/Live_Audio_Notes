@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.BookSession
@@ -148,9 +149,16 @@ fun SessionHistoryCard(
 ) {
     val dateString = try {
         val calendar = Calendar.getInstance().apply { timeInMillis = session.createdAt }
-        DateFormat.format("MMM dd, yyyy h:mm a", calendar).toString()
+        DateFormat.format("MMM dd, yyyy", calendar).toString()
     } catch (e: Exception) {
         "Unknown Date"
+    }
+
+    val lastReadString = try {
+        val calendar = Calendar.getInstance().apply { timeInMillis = session.lastReadTime }
+        DateFormat.format("MMM dd, h:mm a", calendar).toString()
+    } catch (e: Exception) {
+        "Unknown Time"
     }
 
     Card(
@@ -212,7 +220,7 @@ fun SessionHistoryCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Bottom Progress bar and navigation
+            // Bottom details
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -225,25 +233,23 @@ fun SessionHistoryCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = dateString,
+                            text = "Created: $dateString",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
                         Text(
-                            text = "${session.progressPercent.toInt()}% Complete",
+                            text = "Last read: $lastReadString",
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { session.progressPercent / 100f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(CircleShape),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.outlineVariant
+                    Text(
+                        text = "Bookmark: ${session.lastTopic}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 

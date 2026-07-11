@@ -12,8 +12,8 @@ data class BookSession(
     val depth: String,
     val focus: String,
     val masterNotes: String,
-    val progressPercent: Float,
-    val currentChapter: String,
+    val lastTopic: String,
+    val lastReadTime: Long = System.currentTimeMillis(),
     val createdAt: Long = System.currentTimeMillis()
 )
 

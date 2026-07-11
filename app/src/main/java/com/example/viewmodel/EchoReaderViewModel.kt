@@ -142,8 +142,7 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
                 depth = depth,
                 focus = focus,
                 masterNotes = emptyNotes,
-                progressPercent = 0f,
-                currentChapter = "Chapter 1"
+                lastTopic = "Just Started"
             )
 
             val sessionId = repository.saveSession(newSession)
@@ -303,8 +302,11 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
                 newNotes += "\n\n### Segment $chunkNumber Analysis Notes\n${result.masterNotesSuggestedUpdate}"
             }
 
-            val progressIncrement = 5f
-            val newProgress = (session.progressPercent + progressIncrement).coerceAtMost(100f)
+            val newTopic = if (result.summary.isNotBlank()) {
+                if (result.summary.length > 60) result.summary.substring(0, 57) + "..." else result.summary
+            } else {
+                session.lastTopic
+            }
 
             // Background book metadata detection and auto-update
             var updatedTitle = session.title
@@ -329,7 +331,8 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
                 author = updatedAuthor,
                 focus = updatedFocus,
                 masterNotes = newNotes,
-                progressPercent = newProgress
+                lastTopic = newTopic,
+                lastReadTime = System.currentTimeMillis()
             )
             repository.updateSession(updatedSession)
             activeSession = updatedSession

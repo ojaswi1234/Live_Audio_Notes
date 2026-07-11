@@ -272,24 +272,17 @@ fun SessionScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                "Reading Progress",
+                                "Bookmark:",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(modifier = Modifier.width(12.dp))
-                            LinearProgressIndicator(
-                                progress = { session.progressPercent / 100f },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(8.dp)
-                                    .clip(CircleShape),
-                                color = MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.outlineVariant
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                "${session.progressPercent.toInt()}%",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                                text = session.lastTopic,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
