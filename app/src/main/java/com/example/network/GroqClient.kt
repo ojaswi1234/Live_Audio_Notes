@@ -1,7 +1,6 @@
 package com.example.network
 
 import android.util.Log
-import com.example.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -14,7 +13,8 @@ import java.util.concurrent.TimeUnit
 
 object GroqClient {
     private const val TAG = "GroqClient"
-    private const val DEFAULT_BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
+    private const val DEFAULT_PROXY_URL = "https://live-audio-notes.onrender.com"
+    private const val DIRECT_GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(120, TimeUnit.SECONDS)
@@ -74,6 +74,7 @@ object GroqClient {
             - Beginner: Keep vocabulary accessible, write intuitive summaries and explain base concepts.
             - Intermediate: Elaborate with more technical details, list major sub-points, and add rich explanations.
             - Expert: Provide academic/scientific rigor, examine philosophical or stylistic nuances, and trace subtle structural logic.
+
             Because the user selected 'focusArea' = $focusArea, put strong analytical emphasis on tracking $focusArea.
 
             Additionally, you must analyze the text chunk to determine exactly what book or article it belongs to. Look for specific vocabulary, arguments, quotes, names, style, or content. 
@@ -98,13 +99,58 @@ object GroqClient {
 
             Return ONLY valid JSON.
         """.trimIndent()
-        
+
         var finalChunk = chunkText
         if (llmLinguaUrl.isNotEmpty()) {
-            finalChunk = compressPromptWithLLMLingua(llmLinguaUrl, chunkText, systemInstruction)
+            finalChunk = compressPromptWithLLMLingua(llmLinguaUrl, chunkText, "Compress this text for analysis.")
         }
 
-        val requestBodyJson = JSONObject().apply {
+        val proxyUrl = baseUrl.ifEmpty { DEFAULT_PROXY_URL }
+        val useProxy = !proxyUrl.contains("api.groq.com")
+
+        if (useProxy) {
+            val requestBodyJson = JSONObject().apply {
+                put("chunkText", finalChunk)
+                put("bookTitle", bookTitle)
+                put("bookAuthor", bookAuthor)
+                put("readingPurpose", readingPurpose)
+                put("depthLevel", depthLevel)
+                put("focusArea", focusArea)
+                put("previousMasterNotes", previousMasterNotes)
+                put("modelId", modelId)
+            }
+
+            val requestUrl = if (proxyUrl.endsWith("/api/analyze")) proxyUrl else "${proxyUrl.trimEnd('/')}/api/analyze"
+
+            val request = Request.Builder()
+                .url(requestUrl)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
+                .build()
+
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        if (body.isNotEmpty()) {
+                            val jsonResponse = JSONObject(body)
+                            val resultString = jsonResponse.optString("result")
+                            if (resultString.isNotEmpty()) {
+                                return@withContext parseAnalysisResult(resultString, chunkText)
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "Proxy failed with code ${response.code}. Falling back to direct Groq API.")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Proxy attempt failed: ${e.localizedMessage}. Falling back to direct Groq API.")
+            }
+        }
+
+        // --- FALLBACK: Direct Groq API Call ---
+        Log.d(TAG, "Executing direct Groq API fallback...")
+        val fallbackRequestBody = JSONObject().apply {
             put("model", modelId)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
@@ -120,91 +166,57 @@ object GroqClient {
             put("temperature", 0.4)
         }
 
-        val actualUrl = baseUrl.ifEmpty { DEFAULT_BASE_URL }
-        val requestBuilder = Request.Builder()
-            .url(actualUrl)
-            .addHeader("Authorization", "Bearer $apiKey")
-            
-        val request = requestBuilder
-            .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
-            .build()
-        
         var retryCount = 0
         var lastErrorMsg = ""
 
         while (retryCount < 3) {
             try {
-                client.newCall(request).execute().use { response ->
-                    val body = response.body?.string()
-                    if (!response.isSuccessful || body == null) {
-                        var errorDetail = response.message
-                        if (body != null) {
-                            try {
-                                val bodyJson = JSONObject(body)
-                                val errorObj = bodyJson.optJSONObject("error")
-                                if (errorObj != null) {
-                                    errorDetail = errorObj.optString("message", response.message)
-                                }
-                            } catch (e: Exception) {
-                                // ignore
-                            }
-                        }
-                        val errMsg = "Request failed: Code ${response.code}. Msg: $errorDetail"
-                        Log.e(TAG, errMsg)
-                        if (response.code == 429 || response.code >= 500) {
-                            lastErrorMsg = errMsg
-                            retryCount++
-                            kotlinx.coroutines.delay(2000L * retryCount)
-                            return@use // continue while loop
-                        }
-                        return@withContext getFallbackResult(chunkText, errMsg)
-                    }
+                val fallbackRequest = Request.Builder()
+                    .url(DIRECT_GROQ_URL)
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .post(fallbackRequestBody.toString().toRequestBody(mediaTypeJson))
+                    .build()
 
+                client.newCall(fallbackRequest).execute().use { response ->
+                    val body = response.body?.string() ?: return@withContext getFallbackResult(chunkText, "Empty response from Groq server")
                     val jsonResponse = JSONObject(body)
+                    
                     val choices = jsonResponse.optJSONArray("choices")
                     val firstChoice = choices?.optJSONObject(0)
                     val message = firstChoice?.optJSONObject("message")
-                    val responseText = message?.optString("content")
-
-                    if (responseText.isNullOrBlank()) {
-                        Log.e(TAG, "Empty response from Groq")
-                        if (retryCount < 2) {
-                            retryCount++
-                            lastErrorMsg = "Empty response received."
-                            kotlinx.coroutines.delay(1000L)
-                            return@use
-                        }
-                        return@withContext getFallbackResult(chunkText, "Empty response received.")
+                    val contentString = message?.optString("content") ?: ""
+                    
+                    if (contentString.isEmpty()) {
+                        return@withContext getFallbackResult(chunkText, "No content found in Groq response")
                     }
-
-                    return@withContext parseResult(responseText)
+                    return@withContext parseAnalysisResult(contentString, chunkText)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error calling Groq API", e)
-                lastErrorMsg = "Connection Error: ${e.localizedMessage}"
+                lastErrorMsg = e.localizedMessage ?: "Unknown network error"
+                Log.e(TAG, "Direct Groq attempt ${retryCount + 1} failed: $lastErrorMsg")
                 retryCount++
                 kotlinx.coroutines.delay(2000L * retryCount)
             }
         }
-        
-        return@withContext getFallbackResult(chunkText, lastErrorMsg)
+
+        getFallbackResult(chunkText, "All network attempts failed. Last error: $lastErrorMsg")
     }
 
-    private fun parseResult(rawJson: String): AnalysisResult {
+    private fun parseAnalysisResult(rawJson: String, originalChunkText: String): AnalysisResult {
         try {
-            val cleaned = cleanJsonString(rawJson)
-            val json = JSONObject(cleaned)
+            val cleanStr = cleanJsonString(rawJson)
+            val json = JSONObject(cleanStr)
 
-            val summary = json.optString("summary", "Summary not available.")
+            val summary = json.optString("summary", "No summary provided.").ifEmpty { "No summary provided." }
             
             val keyPoints = mutableListOf<String>()
-            val keyPointsArray = json.optJSONArray("keyPoints")
-            if (keyPointsArray != null) {
-                for (i in 0 until keyPointsArray.length()) {
-                    keyPoints.add(keyPointsArray.getString(i))
+            val kpArray = json.optJSONArray("keyPoints")
+            if (kpArray != null) {
+                for (i in 0 until kpArray.length()) {
+                    keyPoints.add(kpArray.getString(i))
                 }
             }
-            if (keyPoints.isEmpty()) keyPoints.add("No key points generated.")
+            if (keyPoints.isEmpty()) keyPoints.add("No specific key points were extracted.")
 
             val connections = mutableListOf<String>()
             val connectionsArray = json.optJSONArray("connections")
@@ -243,6 +255,11 @@ object GroqClient {
                         if (word.isNotEmpty() && meaning.isNotEmpty()) {
                             vocabulary.add(word to meaning)
                         }
+                    } else if (vocabularyArray.optJSONArray(i) != null) {
+                        val vocabArr = vocabularyArray.optJSONArray(i)
+                        if (vocabArr != null && vocabArr.length() >= 2) {
+                            vocabulary.add(vocabArr.optString(0, "") to vocabArr.optString(1, ""))
+                        }
                     }
                 }
             }
@@ -256,7 +273,6 @@ object GroqClient {
             }
             if (questions.isEmpty()) {
                 questions.add("How does this segment influence your understanding of the broader topic?")
-                questions.add("What questions would you ask the author regarding these arguments?")
             }
 
             val notesUpdate = json.optString("masterNotesSuggestedUpdate", "")
@@ -291,7 +307,7 @@ object GroqClient {
                 masterNotesSuggestedUpdate = notesUpdate,
                 flashcards = flashcards,
                 identifiedTitle = identifiedTitle,
-                identifiedAuthor = identifiedAuthor,
+                identifiedAuthor = identifiedAuthor,                
                 identifiedGenreOrType = identifiedGenreOrType
             )
         } catch (e: Exception) {
@@ -318,16 +334,16 @@ object GroqClient {
             summary = "EchoReader could not complete the full analysis due to a network or configuration issue. ($errorDetails)",
             keyPoints = listOf(
                 "Original Text Chunk: $chunkText",
-                "Ensure your Groq API key is valid in the AI Studio Secrets panel."
+                "Ensure your API key is valid in the AI Studio Settings."
             ),
             connections = listOf("Check your internet connection and retry the analysis."),
             reflections = emptyList(),
             webResearch = emptyList(),
             vocabulary = emptyList(),
-            questions = listOf("How can we set up our Groq API configuration correctly to resume learning?"),
+            questions = listOf("How can we set up our API configuration correctly to resume learning?"),
             masterNotesSuggestedUpdate = "Session paused. Key configurations needed.",
             flashcards = listOf(
-                "What is EchoReader's main source of analysis?" to "The Groq API, which requires a valid API key setup."
+                "What is EchoReader's main source of analysis?" to "The API, which requires a valid setup."
             ),
             identifiedTitle = null,
             identifiedAuthor = null,
@@ -345,7 +361,46 @@ object GroqClient {
             return@withContext "{ \"error\": \"API key not configured\" }"
         }
 
-        val requestBodyJson = JSONObject().apply {
+        val proxyUrl = baseUrl.ifEmpty { DEFAULT_PROXY_URL }
+        val useProxy = !proxyUrl.contains("api.groq.com")
+
+        if (useProxy) {
+            val requestBodyJson = JSONObject().apply {
+                put("modelId", modelId)
+                put("prompt", prompt)
+            }
+
+            val requestUrl = if (proxyUrl.endsWith("/api/generate")) proxyUrl else "${proxyUrl.trimEnd('/')}/api/generate"
+
+            val request = Request.Builder()
+                .url(requestUrl)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
+                .build()
+
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        if (body.isNotEmpty()) {
+                            val jsonResponse = JSONObject(body)
+                            val resultString = jsonResponse.optString("result")
+                            if (resultString.isNotEmpty()) {
+                                return@withContext resultString
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "Proxy generateRawResponse failed with code ${response.code}. Falling back to direct API.")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Proxy generateRawResponse failed: ${e.localizedMessage}. Falling back to direct API.")
+            }
+        }
+
+        // --- FALLBACK: Direct Groq API Call ---
+        Log.d(TAG, "Executing direct Groq API fallback for generateRawResponse...")
+        val fallbackRequestBody = JSONObject().apply {
             put("model", modelId)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
@@ -357,28 +412,35 @@ object GroqClient {
             put("temperature", 0.7)
         }
 
-        val actualUrl = baseUrl.ifEmpty { DEFAULT_BASE_URL }
-        val requestBuilder = Request.Builder()
-            .url(actualUrl)
-            .addHeader("Authorization", "Bearer $apiKey")
-            
-        val request = requestBuilder
-            .post(requestBodyJson.toString().toRequestBody(mediaTypeJson))
-            .build()
+        var retryCount = 0
+        var lastErrorMsg = ""
 
-        try {
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string() ?: return@withContext ""
-                val jsonResponse = JSONObject(body)
-                val choices = jsonResponse.optJSONArray("choices")
-                val firstChoice = choices?.optJSONObject(0)
-                val message = firstChoice?.optJSONObject("message")
-                return@withContext message?.optString("content") ?: ""
+        while (retryCount < 3) {
+            try {
+                val fallbackRequest = Request.Builder()
+                    .url(DIRECT_GROQ_URL)
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .post(fallbackRequestBody.toString().toRequestBody(mediaTypeJson))
+                    .build()
+
+                client.newCall(fallbackRequest).execute().use { response ->
+                    val body = response.body?.string() ?: return@withContext "{ \"error\": \"Empty response from Groq server\" }"
+                    val jsonResponse = JSONObject(body)
+                    
+                    val choices = jsonResponse.optJSONArray("choices")
+                    val firstChoice = choices?.optJSONObject(0)
+                    val message = firstChoice?.optJSONObject("message")
+                    return@withContext message?.optString("content") ?: ""
+                }
+            } catch (e: Exception) {
+                lastErrorMsg = e.localizedMessage ?: "Unknown network error"
+                Log.e(TAG, "Direct Groq attempt ${retryCount + 1} failed: $lastErrorMsg")
+                retryCount++
+                kotlinx.coroutines.delay(2000L * retryCount)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error calling Groq API", e)
-            return@withContext "{ \"error\": \"${e.localizedMessage}\" }"
         }
+        
+        return@withContext "{ \"error\": \"All network attempts failed. Last error: $lastErrorMsg\" }"
     }
 
     private suspend fun compressPromptWithLLMLingua(url: String, text: String, instruction: String): String = withContext(Dispatchers.IO) {
