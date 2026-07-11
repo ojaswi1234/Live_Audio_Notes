@@ -1,0 +1,16 @@
+{
+	"name": "Android Android",
+	"image": "mcr.microsoft.com/devcontainers/java:17",
+	"features": {
+		"ghcr.io/devcontainers/features/android:1": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"mathiasfrohlich.Kotlin",
+				"fwcd.kotlin",
+				"naco-siren.gradle-language"
+			]
+		}
+	}
+}
