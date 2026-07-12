@@ -49,4 +49,17 @@ interface BookSessionDao {
 
     @Query("DELETE FROM study_cards WHERE sessionId = :sessionId")
     suspend fun deleteCardsBySessionId(sessionId: Int)
+
+    // User Stats & Gamification
+    @Query("SELECT * FROM user_stats WHERE id = 1")
+    fun getUserStats(): Flow<UserStats?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUserStats(stats: UserStats)
+
+    @Query("SELECT * FROM achievements ORDER BY unlockedAt DESC")
+    fun getAchievements(): Flow<List<Achievement>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAchievement(achievement: Achievement)
 }

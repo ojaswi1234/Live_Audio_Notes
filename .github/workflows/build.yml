@@ -31,8 +31,11 @@ jobs:
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
         cp .env.example .env
 
+    - name: Run Linting and Tests
+      run: gradle testDebugUnitTest lintDebug --no-daemon --parallel --build-cache
+
     - name: Build Debug APK
-      run: gradle assembleDebug
+      run: gradle assembleDebug --no-daemon --parallel --build-cache
 
     - name: Upload APK
       uses: actions/upload-artifact@v4

@@ -17,7 +17,7 @@ data class BookSession(
     val createdAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "text_chunks")
+@Entity(tableName = "text_chunks", indices = [androidx.room.Index(value = ["sessionId"])])
 data class TextChunk(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val sessionId: Int,
@@ -30,7 +30,7 @@ data class TextChunk(
     val timestamp: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "study_cards")
+@Entity(tableName = "study_cards", indices = [androidx.room.Index(value = ["sessionId"])])
 data class StudyCard(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val sessionId: Int,

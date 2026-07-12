@@ -51,4 +51,16 @@ class SessionRepository(private val dao: BookSessionDao) {
     suspend fun deleteCard(cardId: Int) {
         dao.deleteCardById(cardId)
     }
+
+    // Gamification
+    val userStats: Flow<UserStats?> = dao.getUserStats()
+    val achievements: Flow<List<Achievement>> = dao.getAchievements()
+
+    suspend fun saveUserStats(stats: UserStats) {
+        dao.insertUserStats(stats)
+    }
+
+    suspend fun unlockAchievement(achievement: Achievement) {
+        dao.insertAchievement(achievement)
+    }
 }

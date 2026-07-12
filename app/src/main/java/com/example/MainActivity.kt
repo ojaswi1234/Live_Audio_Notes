@@ -91,6 +91,15 @@ class MainActivity : ComponentActivity() {
                                 HistoryScreen(viewModel = viewModel)
                             }
 
+                            AppScreen.BOOK_CLUB -> {
+                                BookClubScreen(viewModel = viewModel)
+                            }
+                            AppScreen.LEADERBOARD -> {
+                                LeaderboardScreen(viewModel = viewModel)
+                            }
+                            AppScreen.PROFILE_REWARDS -> {
+                                ProfileScreen(viewModel = viewModel)
+                            }
                             AppScreen.STUDY_QUIZ -> {
                                 QuizScreen(viewModel = viewModel)
                             }

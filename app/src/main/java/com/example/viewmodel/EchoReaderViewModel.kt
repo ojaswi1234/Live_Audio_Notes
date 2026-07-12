@@ -27,7 +27,10 @@ enum class AppScreen {
     GOALS_SETUP,
     SESSION_DASHBOARD,
     HISTORY_LIST,
-    STUDY_QUIZ
+    STUDY_QUIZ,
+    PROFILE_REWARDS,
+    BOOK_CLUB,
+    LEADERBOARD
 }
 
 class EchoReaderViewModel(application: Application) : AndroidViewModel(application), TextToSpeech.OnInitListener {
@@ -36,6 +39,26 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
     private val repository = SessionRepository(db.bookSessionDao())
     private val voiceManager = VoiceReaderManager(application)
     private var tts: TextToSpeech? = null
+    val scienceFacts = listOf(
+        "When you speak while reading, both your speech and listening work in sync so that you can remember the information longer (known as the production effect).",
+        "Reading aloud forces you to slow down and process the material more deeply, improving overall comprehension and focus.",
+        "Hearing your own voice read the text aloud creates a distinct auditory memory trace, making it easier to recall later.",
+        "Combining visual and auditory processing through reading aloud engages multiple brain regions, strengthening neural pathways.",
+        "Active reading and vocalization can significantly reduce mind-wandering, keeping you anchored to the text.",
+        "Self-explanation and summarizing aloud helps you identify gaps in your understanding in real-time.",
+        "The physical act of articulating words aloud increases engagement and enhances cognitive function.",
+        "Dual-coding theory suggests that forming both visual and auditory memories of text significantly increases long-term retention."
+    )
+
+    var currentScienceFact by mutableStateOf(scienceFacts.random())
+        private set
+
+    var showScienceFactPopup by mutableStateOf(true)
+        private set
+
+    fun dismissScienceFactPopup() {
+        showScienceFactPopup = false
+    }
 
     private val prefs = application.getSharedPreferences("api_prefs", android.content.Context.MODE_PRIVATE)
 
@@ -72,6 +95,8 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
 
     // Database Flows
     val savedSessions = repository.allSessions
+    val userStats = repository.userStats
+    val userAchievements = repository.achievements
 
     // Active Session State
     var activeSession by mutableStateOf<BookSession?>(null)
@@ -134,6 +159,8 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
             val emptyNotes = "# EchoReader Running Notes: $title by $author\n" +
                     "**Purpose**: $purpose | **Depth**: $depth | **Focus**: $focus\n\n" +
                     "## Real-time Chapter Milestones\n*Notes will accumulate here block-by-block.*"
+
+            com.example.viewmodel.incrementSessionsCompleted(repository)
 
             val newSession = BookSession(
                 title = title.ifBlank { "Untitled Document" },
@@ -326,6 +353,7 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
                 updatedFocus = result.identifiedGenreOrType
             }
 
+            com.example.viewmodel.awardXp(repository, 10, "Read Segment")
             val updatedSession = session.copy(
                 title = updatedTitle,
                 author = updatedAuthor,
@@ -372,6 +400,10 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
     fun toggleCardMastered(card: StudyCard) {
         viewModelScope.launch {
             repository.updateCard(card.copy(isMastered = !card.isMastered))
+            if (!card.isMastered) {
+                com.example.viewmodel.incrementMasteredCards(repository)
+                com.example.viewmodel.awardXp(repository, 20, "Mastered Card")
+            }
         }
     }
 
@@ -419,14 +451,12 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
     fun generateMoreFlashcards() {
         val session = activeSession ?: return
         if (isGeneratingFlashcards) return
-
         isGeneratingFlashcards = true
+
         viewModelScope.launch {
             try {
-                // Use master notes or recent chunks to generate flashcards
                 val sourceText = if (session.masterNotes.isNotBlank()) session.masterNotes else "Generate general study flashcards for this topic."
                 
-                // Construct specific prompt to get only flashcards
                 val prompt = """
                     You are an expert tutor. Based on the following study notes, generate 5-10 high-quality flashcards to help the user memorize key concepts.
                     
@@ -442,26 +472,29 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
                 val resultJsonStr = GroqClient.generateRawResponse(
                     apiKey = currentApiKey, 
                     modelId = userSelectedModel, 
-                    
                     prompt = prompt
                 )
-                val cleanResponse = resultJsonStr.replace("```json", "").replace("```", "").trim()
-                val json = org.json.JSONObject(cleanResponse)
-                val flashcardsJson = json.optJSONArray("flashcards")
-                
-                val newCards = mutableListOf<com.example.data.StudyCard>()
-                if (flashcardsJson != null) {
-                    for (i in 0 until flashcardsJson.length()) {
-                        val cardObj = flashcardsJson.optJSONObject(i)
-                        if (cardObj != null) {
-                            newCards.add(com.example.data.StudyCard(
-                                sessionId = session.id,
-                                front = cardObj.optString("question", ""),
-                                back = cardObj.optString("answer", ""),
-                                isMastered = false
-                            ))
+
+                val newCards = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    val cleanResponse = resultJsonStr.replace("```json", "").replace("```", "").trim()
+                    val json = org.json.JSONObject(cleanResponse)
+                    val flashcardsJson = json.optJSONArray("flashcards")
+                    
+                    val cards = mutableListOf<com.example.data.StudyCard>()
+                    if (flashcardsJson != null) {
+                        for (i in 0 until flashcardsJson.length()) {
+                            val cardObj = flashcardsJson.optJSONObject(i)
+                            if (cardObj != null) {
+                                cards.add(com.example.data.StudyCard(
+                                    sessionId = session.id,
+                                    front = cardObj.optString("question", ""),
+                                    back = cardObj.optString("answer", ""),
+                                    isMastered = false
+                                ))
+                            }
                         }
                     }
+                    cards
                 }
                 
                 if (newCards.isNotEmpty()) {
@@ -491,4 +524,53 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
         tts?.shutdown()
         voiceManager.stopListening()
     }
+
+
+
+    // --- Book Club / Multiplayer Simulation ---
+    private val _clubMessages = androidx.compose.runtime.mutableStateListOf<com.example.viewmodel.ClubMessage>()
+    val clubMessages: List<com.example.viewmodel.ClubMessage> = _clubMessages
+    
+    var isClubTyping by mutableStateOf(false)
+        private set
+
+    fun sendClubMessage(text: String) {
+        val userMsg = ClubMessage(java.util.UUID.randomUUID().toString(), "You", text, System.currentTimeMillis())
+        _clubMessages.add(userMsg)
+        
+        isClubTyping = true
+        viewModelScope.launch {
+            try {
+                
+                val sessionContext = activeSession?.title ?: "a book"
+                val prompt = """
+                    You are simulating an AI Book Club for the book '$sessionContext'. 
+                    The user just said: "$text". 
+                    Respond as one of the following personas: 'The Scholar' (deep analysis), 'The Critic' (questions everything), or 'The Enthusiast' (loves the book).
+                    Format your response exactly like this:
+                    [Persona Name]: [Their response]
+                """.trimIndent()
+                
+                val response = GroqClient.generateRawResponse(
+                    apiKey = currentApiKey,
+                    modelId = userSelectedModel,
+                    prompt = prompt
+                )
+                
+                val cleanResponse = response.replace("\"", "").trim()
+                val parts = cleanResponse.split(":", limit = 2)
+                
+                val persona = if (parts.size == 2) parts[0].trim().replace("[", "").replace("]", "") else "The Scholar"
+                val replyText = if (parts.size == 2) parts[1].trim() else cleanResponse
+                
+                _clubMessages.add(ClubMessage(java.util.UUID.randomUUID().toString(), persona, replyText, System.currentTimeMillis()))
+            } catch (e: Exception) {
+                _clubMessages.add(ClubMessage(java.util.UUID.randomUUID().toString(), "System", "Failed to connect to the club. Please check your API key.", System.currentTimeMillis()))
+            } finally {
+                isClubTyping = false
+            }
+        }
+    }
 }
+
+data class ClubMessage(val id: String, val sender: String, val text: String, val timestamp: Long)

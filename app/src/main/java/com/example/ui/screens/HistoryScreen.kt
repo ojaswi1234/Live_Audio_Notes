@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -18,8 +19,10 @@ import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.NavigateNext
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +40,7 @@ import com.example.viewmodel.EchoReaderViewModel
 import java.util.Calendar
 
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Star
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,7 +48,13 @@ fun HistoryScreen(
     viewModel: EchoReaderViewModel,
     modifier: Modifier = Modifier
 ) {
-    val sessions by viewModel.savedSessions.collectAsState(initial = emptyList())
+    val sessions by viewModel.savedSessions.collectAsStateWithLifecycle(initialValue = emptyList())
+    if (viewModel.showScienceFactPopup) {
+        ScienceFactDialog(
+            fact = viewModel.currentScienceFact,
+            onDismiss = { viewModel.dismissScienceFactPopup() }
+        )
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -61,6 +71,12 @@ fun HistoryScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 ),
                 actions = {
+                    IconButton(onClick = { viewModel.navigateTo(AppScreen.LEADERBOARD) }) {
+                        Icon(androidx.compose.material.icons.Icons.Default.EmojiEvents, contentDescription = "Leaderboards")
+                    }
+                    IconButton(onClick = { viewModel.navigateTo(AppScreen.PROFILE_REWARDS) }) {
+                        Icon(Icons.Default.Star, contentDescription = "Profile & Rewards")
+                    }
                     IconButton(onClick = { viewModel.navigateTo(AppScreen.API_KEY_MANAGER) }) {
                         Icon(Icons.Default.Lock, contentDescription = "API Keys")
                     }
@@ -126,7 +142,7 @@ fun HistoryScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(sessions) { s ->
+                items(items = sessions, key = { it.id }) { s ->
                     SessionHistoryCard(
                         session = s,
                         onSelect = {
@@ -272,4 +288,28 @@ fun SessionHistoryCard(
             }
         }
     }
+}
+
+@Composable
+fun ScienceFactDialog(fact: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(Icons.Default.Lightbulb, contentDescription = "Did you know?", tint = MaterialTheme.colorScheme.primary)
+        },
+        title = {
+            Text(text = "Did you know?")
+        },
+        text = {
+            Text(text = fact, style = MaterialTheme.typography.bodyLarge)
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Got it!")
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }

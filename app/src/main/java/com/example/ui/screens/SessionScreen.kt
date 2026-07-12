@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
@@ -218,6 +219,9 @@ fun SessionScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { viewModel.navigateTo(AppScreen.BOOK_CLUB) }) {
+                            Icon(Icons.Default.Group, contentDescription = "Book Club")
+                        }
                         IconButton(onClick = {
                             coroutineScope.launch {
                                 drawerState.open()
