@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
+import com.example.ui.components.TutorStep
+import com.example.ui.components.tutorTarget
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -188,6 +190,20 @@ fun SessionScreen(
                             Icon(Icons.Default.ContentCopy, contentDescription = "Copy")
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Export Notes (Markdown)")
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.activeSession?.let { session ->
+                                    com.example.utils.PdfExporter.exportFullSessionToPdf(context, session)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Download Full Session PDF")
                         }
                     }
                 }
@@ -389,6 +405,7 @@ fun SessionScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(100.dp)
+                                        .tutorTarget(TutorStep.VOICE_READER)
                                         .clickable { viewModel.toggleVoiceListening() },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -779,13 +796,25 @@ fun SessionScreen(
                                     5 -> {
                                         // Web Research view
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
                                             result.webResearch.forEach { topic ->
-                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                                     Text("🌐", fontSize = 14.sp)
                                                     MarkdownText(
                                                         text = topic,
                                                         modifier = Modifier.weight(1f)
                                                     )
+                                                    IconButton(onClick = {
+                                                        val urlRegex = Regex("https?://[^\\s]+")
+                                                        val match = urlRegex.find(topic)
+                                                        if (match != null) {
+                                                            uriHandler.openUri(match.value)
+                                                        } else {
+                                                            uriHandler.openUri("https://www.google.com/search?q=${java.net.URLEncoder.encode(topic, "UTF-8")}")
+                                                        }
+                                                    }) {
+                                                        Icon(Icons.Default.Search, contentDescription = "Search Web", tint = MaterialTheme.colorScheme.primary)
+                                                    }
                                                 }
                                             }
                                             if (result.webResearch.isEmpty()) {

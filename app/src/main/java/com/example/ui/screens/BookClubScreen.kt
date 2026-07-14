@@ -122,7 +122,7 @@ fun BookClubScreen(viewModel: EchoReaderViewModel) {
                             Spacer(modifier = Modifier.height(16.dp))
                             Text("Welcome to the AI Book Club!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(
-                                "Your virtual reading friends (The Scholar, The Critic, and The Enthusiast) are here to discuss ${activeSession.title} with you.",
+                                "Multi-persona AI is present in this chat.\n\nYour virtual reading friends:\n• The Brainstormer (Creative)\n• The Reasoner (Logical)\n• The Debater (Devil's Advocate)\n\nThey are here to discuss ${activeSession.title} with you.",
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                 modifier = Modifier.padding(top = 8.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant

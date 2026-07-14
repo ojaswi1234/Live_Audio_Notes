@@ -21,6 +21,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.screens.*
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.components.TutorOverlay
+import com.example.ui.components.TutorState
 import com.example.viewmodel.AppScreen
 import com.example.viewmodel.EchoReaderViewModel
 
@@ -49,6 +51,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = androidx.compose.material3.MaterialTheme.colorScheme.background
@@ -59,6 +62,12 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(innerPadding)
                     ) { screen ->
                         when (screen) {
+                            AppScreen.AUTH -> {
+                                AuthScreen(viewModel = viewModel)
+                            }
+                            AppScreen.USER_SETUP -> {
+                                com.example.ui.screens.UserSetupScreen(viewModel = viewModel)
+                            }
                             AppScreen.API_SETUP_INSTRUCTIONS -> {
                                 ApiKeyInstructionsScreen(viewModel = viewModel)
                             }
@@ -68,11 +77,7 @@ class MainActivity : ComponentActivity() {
                             AppScreen.API_KEY_MANAGER -> {
                                 ApiKeyManagerScreen(viewModel = viewModel)
                             }
-                            AppScreen.ONBOARDING -> {
-                                OnboardingScreen(
-                                    onGetStarted = { viewModel.navigateTo(AppScreen.HISTORY_LIST) }
-                                )
-                            }
+
 
                             AppScreen.GOALS_SETUP -> {
                                 GoalsSetupScreen(
@@ -107,6 +112,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                if (TutorState.activeStep != null) { TutorOverlay(viewModel = viewModel) }
+                }
                 // Auto request audio permissions hook for voice triggers
                 LaunchedEffect(viewModel.isListening) {
                     if (viewModel.isListening) {

@@ -18,6 +18,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +45,45 @@ fun ProfileScreen(viewModel: EchoReaderViewModel) {
     
     val xpForNextLevel = com.example.viewmodel.getXpRequiredForLevelUp(level)
     val xpProgress = xp.toFloat() / xpForNextLevel.toFloat()
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    var showNameDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var newName by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    
+    val currentUser = com.example.network.FirebaseManager.auth.currentUser
+    val displayName = currentUser?.displayName ?: "Reader"
+
+    if (showNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showNameDialog = false },
+            title = { Text("Update Name") },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Display Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showNameDialog = false
+                    coroutineScope.launch {
+                        if (newName.isNotBlank()) {
+                            val success = viewModel.updateDisplayName(newName)
+                            if (success) {
+                                android.widget.Toast.makeText(context, "Name updated", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNameDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {

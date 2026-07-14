@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -11,22 +13,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.Hearing
-import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.QuestionAnswer
-import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +32,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.example.viewmodel.EchoReaderViewModel
 
 data class OnboardingStep(
     val title: String,
@@ -42,14 +45,13 @@ data class OnboardingStep(
     val colorAccent: Color
 )
 
-@OptIn(ExperimentalAnimationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OnboardingScreen(
-    onGetStarted: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun AuthScreen(viewModel: EchoReaderViewModel, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     val pagerState = rememberPagerState(pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(false) }
 
     val steps = listOf(
         OnboardingStep(
@@ -249,10 +251,57 @@ fun OnboardingScreen(
 
                 val isLastPage = pagerState.currentPage == steps.size - 1
 
+                val doGoogleLogin: () -> Unit = {
+                    isLoading = true
+                    coroutineScope.launch {
+                        try {
+                            val credentialManager = CredentialManager.create(context)
+                            
+                            val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+                            val webClientId = if (resId != 0) context.getString(resId) else {
+                                Toast.makeText(context, "Please re-download google-services.json from Firebase.", Toast.LENGTH_LONG).show()
+                                isLoading = false
+                                return@launch
+                            }
+
+                            val googleIdOption = GetGoogleIdOption.Builder()
+                                .setFilterByAuthorizedAccounts(false)
+                                .setServerClientId(webClientId)
+                                .setAutoSelectEnabled(false)
+                                .build()
+                                
+                            val request = GetCredentialRequest.Builder()
+                                .addCredentialOption(googleIdOption)
+                                .build()
+                                
+                            val result = credentialManager.getCredential(context, request)
+                            val credential = result.credential
+                            
+                            if (credential is androidx.credentials.CustomCredential &&
+                                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                                val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                                val idToken = googleIdTokenCredential.idToken
+                                
+                                val success = viewModel.loginWithGoogle(idToken)
+                                if (!success) {
+                                    Toast.makeText(context, "Authentication failed", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Toast.makeText(context, "Unexpected credential type", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Log.e("Auth", "Google sign-in failed", e)
+                            Toast.makeText(context, "Sign-in error: ${e.message}", Toast.LENGTH_LONG).show()
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                }
+
                 Button(
                     onClick = {
                         if (isLastPage) {
-                            onGetStarted()
+                            doGoogleLogin()
                         } else {
                             coroutineScope.launch {
                                 pagerState.animateScrollToPage(pagerState.currentPage + 1)
@@ -262,38 +311,46 @@ fun OnboardingScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
-                        .testTag("get_started_button"),
+                        .testTag("auth_button"),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
-                    )
+                    ),
+                    enabled = !isLoading
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = if (isLastPage) "Start Reading" else "Continue",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold
+                    if (isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = if (isLastPage) "Continue with Google" else "Continue",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold
+                                )
                             )
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "Next Icon",
-                            modifier = Modifier.size(20.dp)
-                        )
+                            if (!isLastPage) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "Next Icon",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
                 if (!isLastPage) {
                     TextButton(
-                        onClick = onGetStarted,
-                        modifier = Modifier.padding(top = 8.dp)
+                        onClick = doGoogleLogin,
+                        modifier = Modifier.padding(top = 8.dp),
+                        enabled = !isLoading
                     ) {
                         Text(
-                            text = "Skip Intro",
+                            text = "Skip Intro & Sign In",
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                             style = MaterialTheme.typography.labelLarge
                         )

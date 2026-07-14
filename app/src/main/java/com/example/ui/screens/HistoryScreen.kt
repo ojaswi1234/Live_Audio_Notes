@@ -19,6 +19,10 @@ import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.NavigateNext
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.HelpOutline
+import com.example.ui.components.TutorStep
+import com.example.ui.components.TutorState
+import com.example.ui.components.tutorTarget
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.Composable
@@ -71,6 +75,9 @@ fun HistoryScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 ),
                 actions = {
+                    IconButton(onClick = { TutorState.activeStep = TutorStep.WELCOME }) {
+                        Icon(Icons.Default.HelpOutline, contentDescription = "App Tour")
+                    }
                     IconButton(onClick = { viewModel.navigateTo(AppScreen.LEADERBOARD) }) {
                         Icon(androidx.compose.material.icons.Icons.Default.EmojiEvents, contentDescription = "Leaderboards")
                     }
@@ -86,7 +93,7 @@ fun HistoryScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { viewModel.navigateTo(AppScreen.GOALS_SETUP) },
-                modifier = Modifier.testTag("new_session_fab"),
+                modifier = Modifier.testTag("new_session_fab").tutorTarget(TutorStep.START_SESSION),
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = CircleShape

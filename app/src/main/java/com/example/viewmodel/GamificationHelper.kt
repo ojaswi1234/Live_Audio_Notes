@@ -56,15 +56,15 @@ suspend fun awardXp(repository: SessionRepository, amount: Int, reason: String =
         }
     }
     
-    repository.saveUserStats(
-        currentStats.copy(
-            totalXp = currentXpInLevel,
-            level = currentLevel,
-            currentStreak = newStreak,
-            longestStreak = newLongestStreak,
-            lastActiveDate = now
-        )
+    val newStats = currentStats.copy(
+        totalXp = currentXpInLevel,
+        level = currentLevel,
+        currentStreak = newStreak,
+        longestStreak = newLongestStreak,
+        lastActiveDate = now
     )
+    repository.saveUserStats(newStats)
+    com.example.network.FirebaseManager.syncUserStats(newStats.level, newStats.totalXp, newStats.currentStreak, newStats.longestStreak, newStats.flashcardsMastered, newStats.sessionsCompleted)
     
     // Check achievements
     val currentAchievements = repository.achievements.firstOrNull() ?: emptyList()
@@ -87,9 +87,9 @@ suspend fun incrementMasteredCards(repository: SessionRepository) {
     val currentStats = repository.userStats.firstOrNull() ?: UserStats()
     val newMasteredCount = currentStats.flashcardsMastered + 1
     
-    repository.saveUserStats(
-        currentStats.copy(flashcardsMastered = newMasteredCount)
-    )
+    val newStats = currentStats.copy(flashcardsMastered = newMasteredCount)
+    repository.saveUserStats(newStats)
+    com.example.network.FirebaseManager.syncUserStats(newStats.level, newStats.totalXp, newStats.currentStreak, newStats.longestStreak, newStats.flashcardsMastered, newStats.sessionsCompleted)
     
     val currentAchievements = repository.achievements.firstOrNull() ?: emptyList()
     if (newMasteredCount >= 10 && currentAchievements.none { it.id == "cards_10" }) {
@@ -101,9 +101,9 @@ suspend fun incrementSessionsCompleted(repository: SessionRepository) {
     val currentStats = repository.userStats.firstOrNull() ?: UserStats()
     val newCount = currentStats.sessionsCompleted + 1
     
-    repository.saveUserStats(
-        currentStats.copy(sessionsCompleted = newCount)
-    )
+    val newStats = currentStats.copy(sessionsCompleted = newCount)
+    repository.saveUserStats(newStats)
+    com.example.network.FirebaseManager.syncUserStats(newStats.level, newStats.totalXp, newStats.currentStreak, newStats.longestStreak, newStats.flashcardsMastered, newStats.sessionsCompleted)
     
     val currentAchievements = repository.achievements.firstOrNull() ?: emptyList()
     if (newCount >= 1 && currentAchievements.none { it.id == "first_session" }) {

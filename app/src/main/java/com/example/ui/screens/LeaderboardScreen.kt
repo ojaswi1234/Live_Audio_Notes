@@ -29,16 +29,10 @@ fun LeaderboardScreen(viewModel: EchoReaderViewModel) {
     val userLevel = stats?.level ?: 1
     val userXp = stats?.totalXp ?: 0
     
-    // Simulated Leaderboard Data including the current user
-    val mockUsers = listOf(
-        Pair("AlexReads", 12),
-        Pair("BookWorm99", 10),
-        Pair("LiteratureLover", 8),
-        Pair("StudyMaster", 5),
-        Pair("NoviceReader", 2)
-    )
+    val currentUserDisplayName = com.example.network.FirebaseManager.auth.currentUser?.displayName ?: "Anonymous Reader"
     
-    val leaderboard = (mockUsers + Pair("You", userLevel)).sortedByDescending { it.second }
+    val fetchedBoard by viewModel.leaderboard.collectAsStateWithLifecycle(initialValue = emptyList())
+    val leaderboard = fetchedBoard.sortedByDescending { it.second }
 
     Scaffold(
         topBar = {
@@ -86,7 +80,7 @@ fun LeaderboardScreen(viewModel: EchoReaderViewModel) {
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
-                        Text("Your Rank: #${leaderboard.indexOfFirst { it.first == "You" } + 1}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("Your Rank: #${leaderboard.indexOfFirst { it.first == currentUserDisplayName } + 1}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         Text("Level $userLevel • $userXp XP", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
                     }
                 }
@@ -103,7 +97,7 @@ fun LeaderboardScreen(viewModel: EchoReaderViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 itemsIndexed(leaderboard) { index, user ->
-                    val isCurrentUser = user.first == "You"
+                    val isCurrentUser = user.first == currentUserDisplayName
                     val rank = index + 1
                     
                     ListItem(

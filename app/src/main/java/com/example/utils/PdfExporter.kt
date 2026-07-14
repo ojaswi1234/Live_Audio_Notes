@@ -109,4 +109,70 @@ object PdfExporter {
             pdfDocument.close()
         }
     }
+
+    fun exportFullSessionToPdf(context: Context, session: com.example.data.BookSession) {
+        val pdfDocument = PdfDocument()
+        val titlePaint = TextPaint().apply {
+            color = Color.BLACK
+            textSize = 24f
+            isFakeBoldText = true
+        }
+        val textPaint = TextPaint().apply {
+            color = Color.BLACK
+            textSize = 14f
+        }
+
+        val pageWidth = 595
+        val pageHeight = 842
+        var yPosition = 50
+        val margin = 50
+        val contentWidth = pageWidth - 2 * margin
+
+        var pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
+        var page = pdfDocument.startPage(pageInfo)
+        var canvas = page.canvas
+
+        fun drawText(text: String, currentPaint: TextPaint): Int {
+            val staticLayout = StaticLayout.Builder.obtain(text, 0, text.length, currentPaint, contentWidth)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, 1.2f)
+                .setIncludePad(false)
+                .build()
+
+            if (yPosition + staticLayout.height > pageHeight - margin) {
+                pdfDocument.finishPage(page)
+                pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pdfDocument.pages.size + 1).create()
+                page = pdfDocument.startPage(pageInfo)
+                canvas = page.canvas
+                yPosition = margin
+            }
+            canvas.save()
+            canvas.translate(margin.toFloat(), yPosition.toFloat())
+            staticLayout.draw(canvas)
+            canvas.restore()
+            yPosition += staticLayout.height + 20
+            return yPosition
+        }
+
+        drawText("Study Session: ${session.title}", titlePaint)
+        drawText(session.masterNotes, textPaint)
+
+        pdfDocument.finishPage(page)
+
+        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (!dir.exists()) dir.mkdirs()
+        
+        val sanitizedTitle = session.title.replace(Regex("[^a-zA-Z0-9.-]"), "_")
+        val file = File(dir, "Full_Session_${sanitizedTitle}_${System.currentTimeMillis()}.pdf")
+        
+        try {
+            pdfDocument.writeTo(FileOutputStream(file))
+            Toast.makeText(context, "Full Session PDF saved to Downloads", Toast.LENGTH_LONG).show()
+        } catch (e: IOException) {
+            e.printStackTrace()
+            Toast.makeText(context, "Failed to save PDF", Toast.LENGTH_SHORT).show()
+        } finally {
+            pdfDocument.close()
+        }
+    }
 }

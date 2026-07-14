@@ -58,6 +58,18 @@ class SessionRepository(private val dao: BookSessionDao) {
 
     suspend fun saveUserStats(stats: UserStats) {
         dao.insertUserStats(stats)
+        try {
+            com.example.network.FirebaseManager.syncUserStats(
+                level = stats.level, 
+                xp = stats.totalXp,
+                streak = stats.currentStreak,
+                longestStreak = stats.longestStreak,
+                flashcards = stats.flashcardsMastered,
+                sessions = stats.sessionsCompleted
+            )
+        } catch (e: Exception) {
+            // Ignore if Firebase fails
+        }
     }
 
     suspend fun unlockAchievement(achievement: Achievement) {
