@@ -28,7 +28,7 @@ object GeminiClient {
         prompt: String,
         chunkText: String
     ): AnalysisResult = withContext(Dispatchers.IO) {
-        if (apiKey.isEmpty()) {
+        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             return@withContext getFallbackResult(chunkText, "Gemini API key not configured")
         }
 
@@ -38,9 +38,7 @@ object GeminiClient {
             put("contents", JSONArray().apply {
                 put(JSONObject().apply {
                     put("parts", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("text", prompt)
-                        })
+                        put(JSONObject().apply { put("text", prompt) })
                     })
                 })
             })
@@ -71,8 +69,8 @@ object GeminiClient {
 
                         return@withContext parseJsonResponse(text, chunkText)
                     } else {
-                        Log.e(TAG, "Gemini API Error: \${response.code} \$body")
-                        lastErrorMsg = "HTTP \${response.code}: \$body"
+                        Log.e(TAG, "Gemini API Error: ${response.code} $body")
+                        lastErrorMsg = "HTTP ${response.code}: $body"
                     }
                 }
             } catch (e: Exception) {
@@ -200,7 +198,7 @@ object GeminiClient {
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse JSON response: $rawJson", e)
-            return getFallbackResult("Parsing Error", "Raw response could not be loaded into standard modules: \${e.localizedMessage}")
+            return getFallbackResult("Parsing Error", "Raw response could not be loaded into standard modules: ${e.localizedMessage}")
         }
     }
 
@@ -219,9 +217,7 @@ object GeminiClient {
             put("contents", JSONArray().apply {
                 put(JSONObject().apply {
                     put("parts", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("text", prompt)
-                        })
+                        put(JSONObject().apply { put("text", prompt) })
                     })
                 })
             })

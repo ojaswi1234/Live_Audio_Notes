@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
                                 ApiKeyInputScreen(viewModel = viewModel)
                             }
                             AppScreen.API_KEY_MANAGER -> {
-                                ApiKeyManagerScreen(viewModel = viewModel)
+                                ApiKeyInputScreen(viewModel = viewModel)
                             }
 
 

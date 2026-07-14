@@ -65,42 +65,15 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
         showScienceFactPopup = false
     }
 
-    private val prefs = application.getSharedPreferences("api_prefs", android.content.Context.MODE_PRIVATE)
-
-
-    var aiProvider by mutableStateOf(prefs.getString("ai_provider", "Gemini") ?: "Gemini")
-        private set
-
-    fun saveAiProvider(provider: String) {
-        aiProvider = provider
-        prefs.edit().putString("ai_provider", provider).apply()
-        if (provider == "Gemini") {
-            saveModel("gemini-2.0-flash")
-        } else {
-            saveModel("llama-3.1-8b-instant")
-        }
-    }
-
-    var userGeminiApiKey by mutableStateOf(prefs.getString("gemini_api_key", "") ?: "")
-        private set
-
-    fun saveGeminiApiKey(key: String) {
-        userGeminiApiKey = key
-        prefs.edit().putString("gemini_api_key", key).apply()
-    }
-
-    fun deleteGeminiApiKey() {
-        userGeminiApiKey = ""
-        prefs.edit().remove("gemini_api_key").apply()
-    }
-
-    val currentGeminiApiKey: String
-        get() = userGeminiApiKey.takeIf { it.isNotEmpty() } ?: com.example.BuildConfig.GEMINI_API_KEY
+        private val prefs = application.getSharedPreferences("api_prefs", android.content.Context.MODE_PRIVATE)
 
     var userApiKey by mutableStateOf(prefs.getString("groq_api_key", "") ?: "")
         private set
         
-    var userSelectedModel by mutableStateOf(prefs.getString("groq_model", null) ?: if (aiProvider == "Gemini") "gemini-2.0-flash" else "llama-3.1-8b-instant")
+    var userSelectedModel by mutableStateOf(prefs.getString("groq_model", "llama-3.1-8b-instant") ?: "llama-3.1-8b-instant")
+        private set
+
+    var userGeminiApiKey by mutableStateOf(prefs.getString("gemini_api_key", "") ?: "")
         private set
 
     fun saveModel(model: String) {
@@ -113,14 +86,26 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
         prefs.edit().putString("groq_api_key", key).apply()
     }
 
-
     fun deleteApiKey() {
         userApiKey = ""
         prefs.edit().remove("groq_api_key").apply()
     }
 
+    fun saveGeminiApiKey(key: String) {
+        userGeminiApiKey = key
+        prefs.edit().putString("gemini_api_key", key).apply()
+    }
+
+    fun deleteGeminiApiKey() {
+        userGeminiApiKey = ""
+        prefs.edit().remove("gemini_api_key").apply()
+    }
+
     val currentApiKey: String
         get() = userApiKey.takeIf { it.isNotEmpty() } ?: com.example.BuildConfig.GROQ_API_KEY
+        
+    val currentGeminiApiKey: String
+        get() = userGeminiApiKey.takeIf { it.isNotEmpty() } ?: com.example.BuildConfig.GEMINI_API_KEY
 
     // Navigation State
     private val _currentScreen = MutableStateFlow(
@@ -334,19 +319,18 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
 
         try {
             // Call Groq Client
-            val result = GroqClient.analyzeChunk(
-                apiKey = currentApiKey,
-                modelId = userSelectedModel,
-                
-                
-                chunkText = textToProcess,
-                bookTitle = session.title,
-                bookAuthor = session.author,
-                readingPurpose = session.purpose,
-                depthLevel = session.depth,
-                focusArea = session.focus,
-                previousMasterNotes = session.masterNotes
-            )
+            val result = 
+                GroqClient.analyzeChunk(
+                    apiKey = currentApiKey,
+                    modelId = userSelectedModel,
+                    chunkText = textToProcess,
+                    bookTitle = session.title,
+                    bookAuthor = session.author,
+                    readingPurpose = session.purpose,
+                    depthLevel = session.depth,
+                    focusArea = session.focus,
+                    previousMasterNotes = session.masterNotes
+                )
 
             latestAnalysis = result
             if (!isAutoBatch) {
@@ -671,58 +655,6 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
         isClubTyping = true
         viewModelScope.launch {
             try {
-                // 1. Abuse / Nonsense check
-                val moderationPrompt = """
-                    Analyze the following user message sent in a book club chat: "$text".
-                    Is it:
-                    1. ABUSIVE (toxic, offensive, harmful, cursing at people)
-                    2. NONSENSE (gibberish, keyboard mashing, completely irrelevant token wasting)
-                    3. FRUSTRATED (user is annoyed or upset but not directly abusive/toxic)
-                    4. NORMAL (acceptable chat, questions, discussion)
-                    Respond with EXACTLY one of these words: ABUSIVE, NONSENSE, FRUSTRATED, NORMAL.
-                """.trimIndent()
-                
-                val groqKeyValid = currentApiKey.isNotEmpty() && currentApiKey != "MY_GROQ_API_KEY"
-                val geminiKeyValid = currentGeminiApiKey.isNotEmpty() && currentGeminiApiKey != "MY_GEMINI_API_KEY"
-
-                val useGeminiMod = geminiKeyValid && (!groqKeyValid || kotlin.random.Random.nextBoolean())
-                val moderationResponse = if (useGeminiMod) {
-                     com.example.network.GeminiClient.generateRawResponse(
-                        apiKey = currentGeminiApiKey,
-                        modelId = "gemini-1.5-flash",
-                        prompt = moderationPrompt
-                    )
-                } else if (groqKeyValid) {
-                     GroqClient.generateRawResponse(
-                        apiKey = currentApiKey,
-                        modelId = "llama-3.1-8b-instant",
-                        prompt = moderationPrompt
-                    )
-                } else {
-                     "NORMAL"
-                }.trim().uppercase()
-
-                if (moderationResponse.contains("ABUSIVE")) {
-                    chatBlockedUntil = System.currentTimeMillis() + 5 * 60 * 1000 // Block for 5 minutes
-                    val aiMsg = ClubMessage(java.util.UUID.randomUUID().toString(), "System Warning", "Abusive language detected. Your chat has been blocked for 5 minutes.", System.currentTimeMillis())
-                    
-                    // Show their message locally so they see why they were blocked
-                    _aiClubMessages.add(ClubMessage(java.util.UUID.randomUUID().toString(), "You", text, System.currentTimeMillis() - 10))
-                    _aiClubMessages.add(aiMsg)
-                    updateCombinedMessages()
-                    return@launch
-                } else if (moderationResponse.contains("NONSENSE")) {
-                    val aiMsg = ClubMessage(java.util.UUID.randomUUID().toString(), "System Warning", "Please keep the conversation meaningful and avoid spamming.", System.currentTimeMillis())
-                    _aiClubMessages.add(ClubMessage(java.util.UUID.randomUUID().toString(), "You", text, System.currentTimeMillis() - 10))
-                    _aiClubMessages.add(aiMsg)
-                    updateCombinedMessages()
-                    return@launch
-                } else if (moderationResponse.contains("FRUSTRATED")) {
-                    val aiMsg = ClubMessage(java.util.UUID.randomUUID().toString(), "System Warning", "We understand you're frustrated, but please try to keep the discussion constructive.", System.currentTimeMillis() + 100)
-                    _aiClubMessages.add(aiMsg)
-                    // Allow it to pass through to Firebase and AI, but we showed a warning
-                }
-
                 // Send user's message to Firebase
                 com.example.network.FirebaseManager.sendBookClubMessage(bookId, text)
                 
@@ -751,20 +683,12 @@ class EchoReaderViewModel(application: Application) : AndroidViewModel(applicati
                     [Persona Name]: [Their response]
                 """.trimIndent()
                 
-                val useGemini = geminiKeyValid && (!groqKeyValid || kotlin.random.Random.nextBoolean())
+                val groqKeyValid = currentApiKey.isNotEmpty() && currentApiKey != "MY_GROQ_API_KEY"
                 
-                val response = if (useGemini) {
-                     val geminiModel = if (userSelectedModel.contains("gemini")) userSelectedModel else "gemini-1.5-flash"
-                     com.example.network.GeminiClient.generateRawResponse(
-                        apiKey = currentGeminiApiKey,
-                        modelId = geminiModel,
-                        prompt = prompt
-                    )
-                } else if (groqKeyValid) {
-                     val groqModel = if (userSelectedModel.contains("gemini")) "llama-3.1-8b-instant" else userSelectedModel
+                val response = if (groqKeyValid) {
                      GroqClient.generateRawResponse(
                         apiKey = currentApiKey,
-                        modelId = groqModel,
+                        modelId = userSelectedModel,
                         prompt = prompt
                     )
                 } else {
