@@ -1,2 +1,0 @@
-sed -i '/actions = {/!b;n;/IconButton(onClick = { viewModel.navigateTo(AppScreen.BOOK_CLUB)/,+4d' app/src/main/java/com/example/ui/screens/SessionScreen.kt
-sed -i '/actions = {/a \                        IconButton(onClick = { viewModel.navigateTo(AppScreen.BOOK_CLUB) }) {\n                            Icon(Icons.Default.Group, contentDescription = "Book Club")\n                        }' app/src/main/java/com/example/ui/screens/SessionScreen.kt
